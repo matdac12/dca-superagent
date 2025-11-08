@@ -1,11 +1,15 @@
 # Tasks: 5-Model Council Voting System
 
+**Status**: ✅ Implementation Complete (Commit: `17ca073`)
+**Completed**: 2025-11-08
+**Ready for**: End-to-end testing (Task 5.0)
+
 ## Relevant Files
 
-- `trade-wars/src/lib/council/councilDebate.ts` - Main council orchestration logic (COMPLETE REWRITE for 2-phase flow)
-- `trade-wars/src/lib/council/adapters.ts` - LLM adapter implementations (ADD Kimi & DeepSeek, SIMPLIFY to 2 phases)
-- `trade-wars/src/app/api/trading-agent-council/route.ts` - Council API endpoint (UPDATE metadata handling)
-- `trade-wars/src/app/api/trading-cycle/route.ts` - Trading cycle orchestrator (SIMPLIFY to council-only)
+- `trade-wars/src/lib/council/councilDebate.ts` - ✅ Main council orchestration logic (COMPLETE REWRITE for 2-phase flow)
+- `trade-wars/src/lib/council/adapters.ts` - ✅ LLM adapter implementations (ADD Kimi & DeepSeek, SIMPLIFY to 2 phases)
+- `trade-wars/src/app/api/trading-agent-council/route.ts` - ✅ Council API endpoint (UPDATE metadata handling)
+- `trade-wars/src/app/api/trading-cycle/route.ts` - ✅ Trading cycle orchestrator (SIMPLIFY to council-only)
 - `trade-wars/src/lib/council/prompts.ts` - ✅ Already updated for 2-phase system
 - `trade-wars/src/lib/council/types.ts` - ✅ Already updated for 5 models
 
@@ -13,67 +17,68 @@
 
 - All 5 models share the same Binance account credentials (`BINANCE_COUNCIL_API_KEY`)
 - This is ONE portfolio managed by consensus, not multiple portfolios
+- `OPENROUTER_API_KEY` is configured in `.env` for Kimi and DeepSeek access via OpenRouter
 - Existing UI components (CouncilPerformanceDashboard, DebateViewer) will need metadata format updates
 - Old 4-phase debate history will be incompatible with new 2-phase format
 
 ## Tasks
 
-- [ ] 1.0 Rewrite council debate orchestration for 2-phase, 5-model system
-  - [ ] 1.1 Remove critique and revision phase logic from `councilDebate.ts`
-  - [ ] 1.2 Update `DEFAULT_CONFIG` to include all 5 models: ['OpenAI', 'Grok', 'Gemini', 'Kimi', 'DeepSeek']
-  - [ ] 1.3 Simplify `runCouncilDebate()` function to only handle Proposal → Vote flow
-  - [ ] 1.4 Update `normalizeModelName()` helper to recognize Kimi and DeepSeek model names
-  - [ ] 1.5 Remove `checkConsensus()` function (no longer needed with voting system)
-  - [ ] 1.6 Update Phase 1 (Proposals) to call all 5 models in parallel using `Promise.allSettled()`
-  - [ ] 1.7 Add proposal normalization to extract `normalizedAction`, `quantity`, and `asset` from each proposal
-  - [ ] 1.8 Update Phase 2 (Voting) to pass all 5 proposals to all 5 models for ranking
-  - [ ] 1.9 Ensure each model receives all proposals including their own (models must rank ALL 5)
-  - [ ] 1.10 Add error handling for models that fail during proposals (minimum 3 models required)
-  - [ ] 1.11 Add error handling for models that fail during voting (minimum 3 votes required)
-  - [ ] 1.12 Update timeout configurations for 2-phase system (reduce from 240s to 120s global)
+- [x] 1.0 Rewrite council debate orchestration for 2-phase, 5-model system
+  - [x] 1.1 Remove critique and revision phase logic from `councilDebate.ts`
+  - [x] 1.2 Update `DEFAULT_CONFIG` to include all 5 models: ['OpenAI', 'Grok', 'Gemini', 'Kimi', 'DeepSeek']
+  - [x] 1.3 Simplify `runCouncilDebate()` function to only handle Proposal → Vote flow
+  - [x] 1.4 Update `normalizeModelName()` helper to recognize Kimi and DeepSeek model names
+  - [x] 1.5 Remove `checkConsensus()` function (no longer needed with voting system)
+  - [x] 1.6 Update Phase 1 (Proposals) to call all 5 models in parallel using `Promise.allSettled()`
+  - [x] 1.7 Add proposal normalization to extract `normalizedAction`, `quantity`, and `asset` from each proposal
+  - [x] 1.8 Update Phase 2 (Voting) to pass all 5 proposals to all 5 models for ranking
+  - [x] 1.9 Ensure each model receives all proposals including their own (models must rank ALL 5)
+  - [x] 1.10 Add error handling for models that fail during proposals (minimum 3 models required)
+  - [x] 1.11 Add error handling for models that fail during voting (minimum 3 votes required)
+  - [x] 1.12 Update timeout configurations for 2-phase system (reduce from 240s to 120s global)
 
-- [ ] 2.0 Update LLM adapters to support 5 models and 2 phases
-  - [ ] 2.1 Add `KimiAdapter` class to `adapters.ts` using OpenRouter API
-  - [ ] 2.2 Add `DeepSeekAdapter` class to `adapters.ts` using OpenRouter API
-  - [ ] 2.3 Configure OpenRouter client with correct headers (HTTP-Referer, X-Title, Authorization)
-  - [ ] 2.4 Update `buildPromptContext()` to handle dual-asset data (BTC + ADA)
-  - [ ] 2.5 Remove `critique()` method from OpenAIAdapter, GrokAdapter, and GeminiAdapter
-  - [ ] 2.6 Remove `revise()` method from OpenAIAdapter, GrokAdapter, and GeminiAdapter
-  - [ ] 2.7 Update `propose()` method signatures to accept new accumulation-focused PromptContext
-  - [ ] 2.8 Update `vote()` method to accept array of 5 proposals instead of 3
-  - [ ] 2.9 Add retry logic (1 retry) for transient API failures in all adapters
-  - [ ] 2.10 Set temperature to 0.0 for all council API calls (deterministic decisions)
-  - [ ] 2.11 Update structured output schemas to enforce 5-model rankings in vote responses
-  - [ ] 2.12 Add model-specific error logging with timestamps for debugging
+- [x] 2.0 Update LLM adapters to support 5 models and 2 phases
+  - [x] 2.1 Add `KimiAdapter` class to `adapters.ts` using OpenRouter API
+  - [x] 2.2 Add `DeepSeekAdapter` class to `adapters.ts` using OpenRouter API
+  - [x] 2.3 Configure OpenRouter client with correct headers (HTTP-Referer, X-Title, Authorization)
+  - [x] 2.4 Update `buildPromptContext()` to handle dual-asset data (BTC + ADA)
+  - [x] 2.5 Remove `critique()` method from OpenAIAdapter, GrokAdapter, and GeminiAdapter
+  - [x] 2.6 Remove `revise()` method from OpenAIAdapter, GrokAdapter, and GeminiAdapter
+  - [x] 2.7 Update `propose()` method signatures to accept new accumulation-focused PromptContext
+  - [x] 2.8 Update `vote()` method to accept array of 5 proposals instead of 3
+  - [x] 2.9 Add retry logic (1 retry) for transient API failures in all adapters
+  - [x] 2.10 Set temperature to 0.0 for all council API calls (deterministic decisions)
+  - [x] 2.11 Update structured output schemas to enforce 5-model rankings in vote responses
+  - [x] 2.12 Add model-specific error logging with timestamps for debugging
 
-- [ ] 3.0 Implement 5-point ranked voting system with vote tallying
-  - [ ] 3.1 Create `tallyVotes()` function that accepts array of VoteOutput from 5 models
-  - [ ] 3.2 Implement 5-point scoring: 1st place = 5pts, 2nd = 4pts, 3rd = 3pts, 4th = 2pts, 5th = 1pt
-  - [ ] 3.3 Validate that each model's rankings use all 5 unique ranks (no duplicates)
-  - [ ] 3.4 Calculate total points for each proposal across all votes
-  - [ ] 3.5 Determine winner as proposal with highest total points
-  - [ ] 3.6 Implement tie-breaker logic: HOLD > LIMIT orders > MARKET orders
-  - [ ] 3.7 If still tied, prefer lower capital deployment (less USDT spent)
-  - [ ] 3.8 If still tied, select alphabetically by model name (deterministic fallback)
-  - [ ] 3.9 Build `votingMatrix` structure: `Record<ModelName, Record<ModelName, number>>`
-  - [ ] 3.10 Build `voteScores` structure: `Record<ModelName, number>` with final tallies
-  - [ ] 3.11 Add validation that winning proposal passes risk limits before execution
-  - [ ] 3.12 If winning proposal fails validation, select next highest-scoring proposal
-  - [ ] 3.13 If all proposals fail validation, default to HOLD action
+- [x] 3.0 Implement 5-point ranked voting system with vote tallying
+  - [x] 3.1 Create `tallyVotes()` function that accepts array of VoteOutput from 5 models
+  - [x] 3.2 Implement 5-point scoring: 1st place = 5pts, 2nd = 4pts, 3rd = 3pts, 4th = 2pts, 5th = 1pt
+  - [x] 3.3 Validate that each model's rankings use all 5 unique ranks (no duplicates)
+  - [x] 3.4 Calculate total points for each proposal across all votes
+  - [x] 3.5 Determine winner as proposal with highest total points
+  - [x] 3.6 Implement tie-breaker logic: HOLD > LIMIT orders > MARKET orders
+  - [x] 3.7 If still tied, prefer lower capital deployment (less USDT spent)
+  - [x] 3.8 If still tied, select alphabetically by model name (deterministic fallback)
+  - [x] 3.9 Build `votingMatrix` structure: `Record<ModelName, Record<ModelName, number>>`
+  - [x] 3.10 Build `voteScores` structure: `Record<ModelName, number>` with final tallies
+  - [x] 3.11 Add validation that winning proposal passes risk limits before execution
+  - [x] 3.12 If winning proposal fails validation, select next highest-scoring proposal
+  - [x] 3.13 If all proposals fail validation, default to HOLD action
 
-- [ ] 4.0 Update API endpoints for new council flow
-  - [ ] 4.1 Update `trading-agent-council/route.ts` to call new 2-phase `runCouncilDebate()`
-  - [ ] 4.2 Update council metadata structure to match new format with 5 models
-  - [ ] 4.3 Convert `individualProposals` array to object with keys: openai, grok, gemini, kimi, deepseek
-  - [ ] 4.4 Add `votingMatrix` to council metadata for UI display
-  - [ ] 4.5 Update `voteScores` calculation to use new 5-point scoring system
-  - [ ] 4.6 Remove `voteBreakdown` logic (BUY/SELL/HOLD counts) - no longer applicable
-  - [ ] 4.7 Update model name normalization for Kimi ('moonshotai/kimi-k2-thinking') and DeepSeek ('deepseek/deepseek-chat-v3-0324')
-  - [ ] 4.8 Update response format to include full debate metadata (proposals + votes + matrix)
-  - [ ] 4.9 Update `trading-cycle/route.ts` to remove individual agent execution
-  - [ ] 4.10 Keep only council execution in trading cycle, remove OpenAI/Grok/Gemini individual calls
-  - [ ] 4.11 Update documentation comments to reflect 8-hour intervals (3x daily)
-  - [ ] 4.12 Ensure council API returns execution results from winning proposal
+- [x] 4.0 Update API endpoints for new council flow
+  - [x] 4.1 Update `trading-agent-council/route.ts` to call new 2-phase `runCouncilDebate()`
+  - [x] 4.2 Update council metadata structure to match new format with 5 models
+  - [x] 4.3 Convert `individualProposals` array to object with keys: openai, grok, gemini, kimi, deepseek
+  - [x] 4.4 Add `votingMatrix` to council metadata for UI display
+  - [x] 4.5 Update `voteScores` calculation to use new 5-point scoring system
+  - [x] 4.6 Remove `voteBreakdown` logic (BUY/SELL/HOLD counts) - no longer applicable
+  - [x] 4.7 Update model name normalization for Kimi ('moonshotai/kimi-k2-thinking') and DeepSeek ('deepseek/deepseek-chat-v3-0324')
+  - [x] 4.8 Update response format to include full debate metadata (proposals + votes + matrix)
+  - [x] 4.9 Update `trading-cycle/route.ts` to remove individual agent execution
+  - [x] 4.10 Keep only council execution in trading cycle, remove OpenAI/Grok/Gemini individual calls
+  - [x] 4.11 Update documentation comments to reflect 8-hour intervals (3x daily)
+  - [x] 4.12 Ensure council API returns execution results from winning proposal
 
 - [ ] 5.0 End-to-end testing and validation
   - [ ] 5.1 Test Phase 1: Verify all 5 models generate valid proposals in parallel
