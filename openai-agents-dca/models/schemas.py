@@ -31,9 +31,9 @@ class DCAResearchPlan(BaseModel):
     """Output from Planner Agent"""
     searches: List[ResearchQuery] = Field(
         ...,
-        min_length=10,
-        max_length=15,
-        description="10-15 specialized research queries"
+        min_length=5,
+        max_length=5,
+        description="Exactly 5 specialized research queries (one per category)"
     )
     strategy_hint: str = Field(
         ...,

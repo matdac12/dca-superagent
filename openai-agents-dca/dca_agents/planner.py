@@ -148,7 +148,7 @@ async def plan_research(market_context: MarketContext) -> DCAResearchPlan:
         market_context: Current market data, portfolio state, indicators
 
     Returns:
-        DCAResearchPlan with 10-15 specialized search queries
+        DCAResearchPlan with exactly 5 specialized search queries (one per category)
     """
     from agents import Runner
 

@@ -11,28 +11,41 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Model Configuration
 class ModelConfig:
-    """Model selection based on task complexity"""
+    """Model selection based on task complexity
 
-    # GPT-5 for critical thinking tasks
+    Environment variables for testing (optional):
+    - MODEL_STRATEGIC: Override for strategic/planning tasks (default: gpt-5)
+    - MODEL_EXECUTION: Override for execution/analysis tasks (default: gpt-5-mini)
+    - MODEL_VALIDATION: Override for validation tasks (default: gpt-4o-mini)
+
+    If env vars are not set, uses carefully chosen defaults.
+    """
+
+    # Base model tiers (defaults)
     GPT_5 = "gpt-5"
-
-    # GPT-5-mini for high-quality execution
     GPT_5_MINI = "gpt-5-mini"
-
-    # GPT-4o-mini for fast validation
     GPT_4O_MINI = "gpt-4o-mini"
 
-    # Model assignments
-    PLANNER = GPT_5           # Research query generation
-    RESEARCHER = GPT_5_MINI   # Web search synthesis
-    TECHNICAL = GPT_5_MINI    # Technical analysis
-    FUNDAMENTAL = GPT_5_MINI  # Fundamental analysis
-    RISK = GPT_5_MINI         # Risk analysis
-    SENTIMENT = GPT_5_MINI    # Sentiment analysis
-    STRATEGIST = GPT_5        # Strategy synthesis
-    DECISION = GPT_5          # Final decision
-    VALIDATOR = GPT_4O_MINI   # Risk validation guardrail
-    VERIFIER = GPT_4O_MINI    # Post-decision audit
+    # Environment variable overrides (for testing)
+    _STRATEGIC = os.getenv("MODEL_STRATEGIC", GPT_5)
+    _EXECUTION = os.getenv("MODEL_EXECUTION", GPT_5_MINI)
+    _VALIDATION = os.getenv("MODEL_VALIDATION", GPT_4O_MINI)
+
+    # Model assignments (strategic tier - high IQ tasks)
+    PLANNER = _STRATEGIC      # Research query generation
+    STRATEGIST = _STRATEGIC   # Strategy synthesis
+    DECISION = _STRATEGIC     # Final decision
+
+    # Model assignments (execution tier - analysis tasks)
+    RESEARCHER = _EXECUTION   # Web search synthesis
+    TECHNICAL = _EXECUTION    # Technical analysis
+    FUNDAMENTAL = _EXECUTION  # Fundamental analysis
+    RISK = _EXECUTION         # Risk analysis
+    SENTIMENT = _EXECUTION    # Sentiment analysis
+
+    # Model assignments (validation tier - guardrails)
+    VALIDATOR = _VALIDATION   # Risk validation guardrail
+    VERIFIER = _VALIDATION    # Post-decision audit
 
 
 # Agent Configuration

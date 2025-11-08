@@ -273,7 +273,7 @@ async def main():
 
 To implement the full system:
 - Each agent makes async OpenAI API calls with structured outputs (Pydantic models)
-- Research stage: 10-15 parallel web searches using OpenAI's browsing capability
+- Research stage: 5 parallel web searches using OpenAI's browsing capability (one per category)
 - Specialist analysts: Call OpenAI with technical/fundamental/risk/sentiment prompts
 - Strategist: Synthesizes all data and generates 3-5 strategic options
 - Decision: Final selection with risk validation guardrail

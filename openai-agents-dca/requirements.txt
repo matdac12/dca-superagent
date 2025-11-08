@@ -16,3 +16,6 @@ loguru>=0.7.0
 
 # Telegram notifications
 requests>=2.31.0
+
+# Beautiful console output
+rich>=13.0.0

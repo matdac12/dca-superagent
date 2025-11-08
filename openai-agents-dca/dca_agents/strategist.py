@@ -119,12 +119,15 @@ PROCESS:
 
    For each strategic option, generate specific actions:
 
+   **CRITICAL**: Every order MUST have a value of at least ${AgentConfig.MIN_ORDER_VALUE_USD} (price × quantity ≥ ${AgentConfig.MIN_ORDER_VALUE_USD}).
+   Orders below this minimum will be REJECTED by safety validation.
+
    **LIMIT BUY ORDER** (preferred):
    {{
      "type": "PLACE_LIMIT_BUY",
      "asset": "BTCUSDT" or "ADAUSDT",
      "price": specific_number (2-5% below current market),
-     "quantity": calculated_from_allocation_pct,
+     "quantity": calculated_from_allocation_pct (ENSURE: price × quantity ≥ ${AgentConfig.MIN_ORDER_VALUE_USD}),
      "reasoning": "Entry at $89,500 targets lower BB support with 65% fill probability"
    }}
 

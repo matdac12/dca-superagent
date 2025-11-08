@@ -25,6 +25,7 @@ from market_context_builder import MarketContextBuilder
 from safety_validator import SafetyValidator
 from binance_executor import BinanceExecutor
 from telegram_notifier import TelegramNotifier
+from console_logger import ConsoleLogger
 
 # OpenAI Agents
 from agents import Runner
@@ -66,17 +67,24 @@ class AutonomousDCASystem:
         # Telegram notifier
         self.notifier = TelegramNotifier()
 
+        # Console logger for beautiful output
+        self.console = ConsoleLogger()
+
         # Setup logging
         self._setup_logging()
 
+        # Initial setup complete (logged to file only)
         logger.info(f"🤖 Autonomous DCA System initialized (testnet={testnet}, dry_run={dry_run})")
 
     def _setup_logging(self):
-        """Configure logging with file output"""
+        """Configure logging: verbose file logs, no console output (using Rich instead)"""
         log_dir = "logs"
         os.makedirs(log_dir, exist_ok=True)
 
-        # Add file handler with rotation
+        # Remove default console handler (we'll use Rich for console)
+        logger.remove()
+
+        # Add file handler with rotation (verbose logging)
         logger.add(
             f"{log_dir}/dca_{{time:YYYY-MM-DD}}.log",
             rotation="00:00",
@@ -92,17 +100,23 @@ class AutonomousDCASystem:
         Returns:
             Complete execution report dictionary
         """
+        # Log to file
         logger.info("\n" + "="*80)
         logger.info("🚀 AUTONOMOUS DCA AGENT SYSTEM - STARTING")
         logger.info("="*80)
+
+        # Print beautiful startup banner
+        self.console.print_banner(self.testnet, self.dry_run)
 
         start_time = datetime.now()
 
         try:
             # STAGE 0: Fetch market data
             logger.info("\n📊 STAGE 0: FETCHING MARKET DATA")
-            logger.info("-" * 80)
+            self.console.print_stage_header(0, "Fetching Market Data", "📊")
+
             intelligence = self.market_data.get_complete_market_intelligence()
+            self.console.print_market_data(intelligence)
 
             # Build agent-readable context
             full_context = self.context_builder.build_context(intelligence)
@@ -110,13 +124,13 @@ class AutonomousDCASystem:
 
             # STAGE 1: Research Planning
             logger.info("\n📋 STAGE 1: RESEARCH PLANNING")
-            logger.info("-" * 80)
+            self.console.print_stage_header(1, "Research Planning", "📋")
+
             planner = create_planner_agent()
             plan_result = await Runner.run(planner, research_context)
             research_plan = plan_result.final_output
 
-            logger.info(f"✓ Generated {len(research_plan.searches)} research queries")
-            logger.info(f"Strategy Hint: {research_plan.strategy_hint}")
+            self.console.print_research_plan(research_plan)
 
             # STAGE 1b: Execute searches (parallel)
             logger.info("\n🔍 Executing web searches in parallel...")
@@ -128,13 +142,18 @@ class AutonomousDCASystem:
                 task = asyncio.create_task(Runner.run(search_agent, input_text))
                 search_tasks.append(task)
 
+            # Use Rich progress bar for searches
             search_results = []
-            for i, task in enumerate(asyncio.as_completed(search_tasks), 1):
-                result = await task
-                search_results.append(str(result.final_output))
-                logger.info(f"  [{i}/{len(search_tasks)}] Completed")
+            with self.console.create_search_progress(len(search_tasks)) as progress:
+                task_id = progress.add_task("[cyan]🔍 Executing web searches...", total=len(search_tasks))
 
-            logger.info(f"✓ Completed {len(search_results)} searches")
+                for task in asyncio.as_completed(search_tasks):
+                    result = await task
+                    search_results.append(str(result.final_output))
+                    progress.update(task_id, advance=1)
+
+            self.console.print_success(f"Completed {len(search_results)} searches")
+            self.console.print()
 
             # Format research for downstream
             research_summary = "\n\n".join([
@@ -146,8 +165,9 @@ class AutonomousDCASystem:
 
             # STAGE 3: Strategy Synthesis
             logger.info("\n\n🎯 STAGE 3: STRATEGY SYNTHESIS")
-            logger.info("-" * 80)
-            logger.info("Strategist calling analyst tools and generating options...")
+            self.console.print_stage_header(3, "Strategy Synthesis", "🎯")
+            self.console.print_info("Strategist calling analyst tools and generating options...")
+            self.console.print()
 
             # Create analyst tools
             technical_analyst = create_technical_analyst()
@@ -180,14 +200,11 @@ Call analyst tools as needed for deeper insights.
             strategy_result = await Runner.run(strategist, strategy_input)
             strategy_options = strategy_result.final_output
 
-            logger.info(f"✓ Generated {len(strategy_options.options)} strategic options")
-            logger.info(f"Market Summary: {strategy_options.market_summary}")
-            for i, opt in enumerate(strategy_options.options, 1):
-                logger.info(f"  {i}. {opt.strategy} (Conviction: {opt.conviction}/10)")
+            self.console.print_strategy_options(strategy_options)
 
             # STAGE 4: Final Decision
             logger.info("\n\n⚖️  STAGE 4: FINAL DECISION")
-            logger.info("-" * 80)
+            self.console.print_stage_header(4, "Final Decision", "⚖️")
 
             decision_agent = create_decision_agent()
             decision_input = f"""{full_context}
@@ -204,9 +221,7 @@ Select THE BEST option and provide detailed reasoning.
             decision = decision_result.final_output
 
             selected_option = strategy_options.options[decision.selected_option]
-            logger.info(f"✓ Selected: Option {decision.selected_option + 1} - {selected_option.strategy}")
-            logger.info(f"Conviction: {selected_option.conviction}/10")
-            logger.info(f"Reasoning: {decision.reasoning}")
+            self.console.print_decision(decision, selected_option)
 
             # Convert actions from Pydantic models to dictionaries
             actions = []
@@ -224,18 +239,46 @@ Select THE BEST option and provide detailed reasoning.
                     action_dict['order_id'] = action.order_id
                 actions.append(action_dict)
 
-            logger.info(f"Actions to execute: {len(actions)}")
+            # Filter out orders below minimum value (defensive check)
+            from config import AgentConfig
+            filtered_actions = []
+            removed_count = 0
+
+            for action in actions:
+                # Only check PLACE_LIMIT_BUY and PLACE_MARKET_BUY orders
+                if action['type'] in ['PLACE_LIMIT_BUY', 'PLACE_MARKET_BUY']:
+                    order_value = action.get('amount_usd', 0)
+                    if order_value < AgentConfig.MIN_ORDER_VALUE_USD:
+                        removed_count += 1
+                        logger.warning(
+                            f"⚠️ Filtered out {action['type']} {action['asset']} order "
+                            f"(${order_value:.2f} < ${AgentConfig.MIN_ORDER_VALUE_USD} minimum)"
+                        )
+                        self.console.print_warning(
+                            f"Filtered out {action['asset']} order: ${order_value:.2f} < ${AgentConfig.MIN_ORDER_VALUE_USD} minimum"
+                        )
+                        continue
+
+                filtered_actions.append(action)
+
+            if removed_count > 0:
+                logger.info(f"📋 Filtered out {removed_count} orders below minimum value")
+                self.console.print_info(f"Removed {removed_count} invalid order(s), continuing with {len(filtered_actions)} valid action(s)")
+                self.console.print()
+
+            actions = filtered_actions
+            self.console.print_actions(actions)
 
             # STAGE 4b: Safety Validation
             logger.info("\n\n🛡️  STAGE 4B: SAFETY VALIDATION")
-            logger.info("-" * 80)
+            self.console.print_stage_header(4, "Safety Validation", "🛡️")
 
             validator = SafetyValidator(intelligence)
             is_valid, errors = validator.validate_trading_decision(actions)
 
-            if is_valid:
-                logger.info("✅ All actions passed safety validation")
-            else:
+            self.console.print_validation_result(is_valid, errors)
+
+            if not is_valid:
                 logger.error(f"❌ Safety validation failed with {len(errors)} error(s):")
                 for error in errors:
                     logger.error(f"  • {error}")
@@ -249,8 +292,11 @@ Select THE BEST option and provide detailed reasoning.
                 }
 
             # STAGE 5: Execution
+            logger.info("\n\n🚀 STAGE 5: TRADE EXECUTION")
+            if not self.dry_run:
+                self.console.print_stage_header(5, "Trade Execution", "🚀")
+
             if self.dry_run:
-                logger.info("\n\n🔍 DRY RUN MODE - Skipping actual execution")
                 execution_result = {
                     'success': True,
                     'executed': 0,
@@ -259,13 +305,13 @@ Select THE BEST option and provide detailed reasoning.
                     'dry_run': True
                 }
             else:
-                logger.info("\n\n🚀 STAGE 5: TRADE EXECUTION")
-                logger.info("-" * 80)
                 execution_result = self.executor.execute_actions(actions)
+
+            self.console.print_execution_result(execution_result)
 
             # STAGE 6: Verification
             logger.info("\n\n🔍 STAGE 6: POST-DECISION VERIFICATION")
-            logger.info("-" * 80)
+            self.console.print_stage_header(6, "Post-Decision Verification", "🔍")
 
             verifier = create_verifier_agent()
             verification_input = f"""{full_context}
@@ -288,9 +334,7 @@ Audit the decision logic and execution for consistency and quality.
             verification_result = await Runner.run(verifier, verification_input)
             verification = verification_result.final_output
 
-            logger.info(f"Verification Status: {verification.consistency_check}")
-            logger.info(f"Issues: {len(verification.issues)}")
-            logger.info(f"Recommendations: {len(verification.recommendations)}")
+            self.console.print_verification(verification)
 
             # Generate final report
             end_time = datetime.now()
@@ -334,24 +378,21 @@ Audit the decision logic and execution for consistency and quality.
 
             # Send Telegram notification
             logger.info("📱 Sending Telegram notification...")
+            self.console.print()
             if self.notifier.send_execution_report(report):
                 logger.info("✓ Telegram notification sent")
+                self.console.print_success("Telegram notification sent")
             else:
                 logger.warning("⚠️ Telegram notification not sent (check configuration)")
+                self.console.print_warning("Telegram notification not sent (check configuration)")
 
             # Final summary
             logger.info("\n\n" + "="*80)
             logger.info("✅ AUTONOMOUS DCA PIPELINE COMPLETE")
             logger.info("="*80)
-            logger.info(f"Duration: {duration:.1f}s")
-            logger.info(f"Strategy: {selected_option.strategy}")
-            logger.info(f"Conviction: {selected_option.conviction}/10")
-            logger.info(f"Actions: {len(actions)}")
-            if not self.dry_run:
-                logger.info(f"Executed: {execution_result['executed']}")
-                logger.info(f"Failed: {execution_result['failed']}")
-            logger.info(f"Verification: {verification.consistency_check}")
-            logger.info("="*80)
+
+            self.console.print()
+            self.console.print_final_summary(report)
 
             return report
 
