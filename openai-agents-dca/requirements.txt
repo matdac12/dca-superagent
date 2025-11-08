@@ -1,0 +1,15 @@
+# OpenAI Agents SDK
+git+https://github.com/openai/openai-agents-python.git
+
+# Binance integration
+python-binance>=1.0.19
+
+# Technical indicators
+pandas>=2.0.0
+ta>=0.11.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Logging
+loguru>=0.7.0
