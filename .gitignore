@@ -13,6 +13,8 @@
 ai-dev-tasks-main/
 moon-dev-ai-agents/
 polymarket-agent/
+openai-agents-python/
+moon-dev-ai-agents/
 
 # npm cache
 trade-wars/.npm-cache/

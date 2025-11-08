@@ -24,6 +24,7 @@ from binance_integration import BinanceMarketData
 from market_context_builder import MarketContextBuilder
 from safety_validator import SafetyValidator
 from binance_executor import BinanceExecutor
+from telegram_notifier import TelegramNotifier
 
 # OpenAI Agents
 from agents import Runner
@@ -61,6 +62,9 @@ class AutonomousDCASystem:
 
         # Context builder
         self.context_builder = MarketContextBuilder()
+
+        # Telegram notifier
+        self.notifier = TelegramNotifier()
 
         # Setup logging
         self._setup_logging()
@@ -312,6 +316,13 @@ Audit the decision logic and execution for consistency and quality.
 
             # Save report
             self._save_report(report)
+
+            # Send Telegram notification
+            logger.info("📱 Sending Telegram notification...")
+            if self.notifier.send_execution_report(report):
+                logger.info("✓ Telegram notification sent")
+            else:
+                logger.warning("⚠️ Telegram notification not sent (check configuration)")
 
             # Final summary
             logger.info("\n\n" + "="*80)
