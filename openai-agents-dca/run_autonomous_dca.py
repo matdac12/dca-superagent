@@ -179,7 +179,7 @@ Call analyst tools as needed for deeper insights.
             logger.info(f"✓ Generated {len(strategy_options.options)} strategic options")
             logger.info(f"Market Summary: {strategy_options.market_summary}")
             for i, opt in enumerate(strategy_options.options, 1):
-                logger.info(f"  {i}. {opt.name} (Conviction: {opt.conviction}/10)")
+                logger.info(f"  {i}. {opt.strategy} (Conviction: {opt.conviction}/10)")
 
             # STAGE 4: Final Decision
             logger.info("\n\n⚖️  STAGE 4: FINAL DECISION")
@@ -200,7 +200,7 @@ Select THE BEST option and provide detailed reasoning.
             decision = decision_result.final_output
 
             selected_option = strategy_options.options[decision.selected_option]
-            logger.info(f"✓ Selected: Option {decision.selected_option + 1} - {decision.strategy_name}")
+            logger.info(f"✓ Selected: Option {decision.selected_option + 1} - {selected_option.strategy}")
             logger.info(f"Conviction: {selected_option.conviction}/10")
             logger.info(f"Reasoning: {decision.reasoning}")
 
@@ -318,7 +318,7 @@ Audit the decision logic and execution for consistency and quality.
             logger.info("✅ AUTONOMOUS DCA PIPELINE COMPLETE")
             logger.info("="*80)
             logger.info(f"Duration: {duration:.1f}s")
-            logger.info(f"Strategy: {decision.strategy_name}")
+            logger.info(f"Strategy: {selected_option.strategy}")
             logger.info(f"Conviction: {selected_option.conviction}/10")
             logger.info(f"Actions: {len(actions)}")
             if not self.dry_run:
