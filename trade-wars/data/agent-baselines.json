@@ -1,0 +1,26 @@
+[
+  {
+    "name": "openai",
+    "displayName": "OpenAI Agent",
+    "startingCapital": 124136.44,
+    "initializedAt": "2025-10-18T12:32:00.000Z"
+  },
+  {
+    "name": "grok",
+    "displayName": "Grok Agent",
+    "startingCapital": 124136.44,
+    "initializedAt": "2025-10-18T12:32:00.000Z"
+  },
+  {
+    "name": "gemini",
+    "displayName": "Gemini Agent",
+    "startingCapital": 124136.44,
+    "initializedAt": "2025-10-18T12:32:00.000Z"
+  },
+  {
+    "name": "council",
+    "displayName": "Council Agent",
+    "startingCapital": 124136.44,
+    "initializedAt": "2025-10-18T12:32:00.000Z"
+  }
+]

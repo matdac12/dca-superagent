@@ -1,0 +1,5 @@
+{
+  "agentName": "council-openai",
+  "plan": "Plan: Execute a modest MARKET buy of 0.0008 BTC (~$85–$90) to participate in the current bullish momentum. Reassess in 4 hours with updated data. Maintain risk controls: no open limit orders now (capacity for up to 3 later), limit total open order value to ≤50% of portfolio, and invalidate the thesis if price moves >1.5 ATR against entry (ATR 1,131.71 -> ~1,697.57 distance). If momentum persists, consider laddered LIMIT entries/exits in subsequent cycles at incremental prices while keeping diversification and capital protection in mind. Ensure compliance with daily cap (10 trades) and minimum order size ($10). Expect potential macro-driven volatility (US employment data) but current indicators favor a long bias.",
+  "lastUpdated": "2025-10-18T21:48:08.652Z"
+}

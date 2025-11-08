@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+*.log
+.DS_Store
+test-*.ts
+council-test.ts
+reset-portfolio.ts
+.env.local
+.env

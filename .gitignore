@@ -1,0 +1,22 @@
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# Playwright
+.playwright-mcp/
+
+# macOS
+.DS_Store
+
+# Misc folders
+ai-dev-tasks-main/
+moon-dev-ai-agents/
+polymarket-agent/
+
+# npm cache
+trade-wars/.npm-cache/
+
+# Backtesting stuff
+trade-wars/backtesting/
+trade-wars/TRADING_PROMPTS.md

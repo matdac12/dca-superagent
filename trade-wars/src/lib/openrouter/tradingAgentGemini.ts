@@ -1,0 +1,257 @@
+import OpenAI from 'openai';
+import { TradingDecisionSchema, TradingDecision, Balance } from '@/types/trading';
+import { buildTradingPromptWithPlan, PromptConfig, MarketIntelligence } from '@/lib/prompts/tradingPromptBuilder';
+import { checkDailyOrderCap } from '@/lib/utils/dailyOrderCap';
+import { loadPlan, savePlan } from '@/lib/storage/agentPlans';
+import { getAgentConfig } from '@/config/agents';
+import { getOpenOrders } from '@/lib/binance/openOrders';
+import { validateRiskLimits } from '@/lib/execution/orderValidator';
+import { executeActions, ActionResult } from '@/lib/execution/multiActionExecutor';
+
+export interface TradingAgentResult {
+  decision: TradingDecision;
+  executionResults: ActionResult[];
+}
+
+// Initialize OpenRouter client for Gemini
+const openrouter = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  defaultHeaders: {
+    "HTTP-Referer": "https://tradewarriors.dev",
+    "X-Title": "TradeWarriors",
+  },
+});
+
+/**
+ * Analyzes market data and returns a trading decision using Gemini 2.5 Flash
+ * via OpenRouter with structured outputs for guaranteed schema compliance.
+ *
+ * Returns both the decision and execution results for trade history logging.
+ */
+const AGENT_NAME = 'gemini';
+
+export async function analyzeTradingOpportunityGemini(
+  marketData: MarketIntelligence,
+  agentName: string = AGENT_NAME
+): Promise<TradingAgentResult> {
+  // No daily cap for long-term accumulation strategy
+  const dailyCapResult = { count: 0, allowed: true, remaining: 999 };
+
+  const previousPlan = await loadPlan(agentName).catch(error => {
+    console.warn(`Failed to load plan for ${agentName}:`, error);
+    return null;
+  });
+
+  const agentConfig = getAgentConfig(agentName);
+  if (!agentConfig) {
+    throw new Error(`Agent configuration not found for ${agentName}`);
+  }
+
+  // Fetch open orders for both BTC and ADA
+  const [btcOrders, adaOrders] = await Promise.all([
+    getOpenOrders('BTCUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => []),
+    getOpenOrders('ADAUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => [])
+  ]);
+  const openOrders = [...btcOrders, ...adaOrders];
+
+  // Define prompt configuration for accumulation strategy
+  const promptConfig: PromptConfig = {
+    tone: 'balanced',
+    maxPositionPct: 0.20,
+    minOrderUSD: 10,
+    decisionInterval: '8 hours',
+    dailyOrderCap: 999
+  };
+
+  const { systemPrompt, userPrompt } = await buildTradingPromptWithPlan(
+    agentName,
+    marketData,
+    promptConfig,
+    dailyCapResult.count,
+    {
+      binanceApiKey: agentConfig.binanceApiKey,
+      binanceSecretKey: agentConfig.binanceSecretKey,
+      openOrdersOverride: openOrders,
+      planOverride: previousPlan
+        ? {
+            text: previousPlan.plan,
+            lastUpdated: previousPlan.lastUpdated
+          }
+        : marketData.plan ?? null
+    }
+  );
+
+  // Call OpenRouter with retry logic
+  const maxRetries = 1;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Temperature 0.0 ensures deterministic, repeatable decisions (Task 6.2.7)
+      const completion = await openrouter.chat.completions.create({
+        model: "google/gemini-2.5-flash",
+        temperature: 0.0, // Task 6.2.6
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "trading_decision",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    oneOf: [
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["CANCEL_ORDER"] },
+                          orderId: { type: "string" },
+                          asset: { type: "string" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "orderId", "asset", "reasoning"],
+                        additionalProperties: false
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_LIMIT_BUY"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          price: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "price", "reasoning"],
+                        additionalProperties: false
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_LIMIT_SELL"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          price: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "price", "reasoning"],
+                        additionalProperties: false
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_MARKET_BUY"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "reasoning"],
+                        additionalProperties: false
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_MARKET_SELL"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "reasoning"],
+                        additionalProperties: false
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["HOLD"] },
+                          asset: { type: "string" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "reasoning"],
+                        additionalProperties: false
+                      }
+                    ]
+                  }
+                },
+                plan: {
+                  type: "string"
+                },
+                reasoning: {
+                  type: "string"
+                }
+              },
+              required: ["actions", "plan", "reasoning"],
+              additionalProperties: false
+            }
+          }
+        }
+      });
+
+      // Extract and parse the response
+      const content = completion.choices[0].message.content;
+      if (!content) {
+        throw new Error('Empty response from Gemini model');
+      }
+
+      const decision = TradingDecisionSchema.parse(JSON.parse(content));
+
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Invalid response: missing actions array');
+      }
+
+      if (!decision.plan?.trim()) {
+        throw new Error('Invalid response: missing plan');
+      }
+
+      // Use BTC price for legacy validation
+      const btcPrice = marketData.btc?.ticker?.lastPrice || 0;
+
+      const riskValidation = validateRiskLimits(
+        decision.actions,
+        openOrders,
+        marketData.balances,
+        btcPrice
+      );
+
+      if (!riskValidation.allowed) {
+        throw new Error(`Risk validation failed: ${riskValidation.errors.join('; ')}`);
+      }
+
+      const actionResults = await executeActions(
+        decision.actions,
+        btcPrice,
+        marketData.balances as Balance[],
+        openOrders,
+        agentConfig.binanceApiKey,
+        agentConfig.binanceSecretKey
+      );
+
+      await savePlan(agentName, decision.plan);
+
+      return {
+        decision,
+        executionResults: actionResults
+      };
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Gemini API error (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+
+      // Don't retry if it's the last attempt
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // Wait 1 second before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // If all retries failed, throw the last error
+  throw new Error(`Failed to get trading decision from Gemini after ${maxRetries + 1} attempts: ${lastError?.message}`);
+}

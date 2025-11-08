@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  /* Trade Wars Color Palette - Factory.ai inspired */
+  --bg: #ffffff;
+  --text: #0a0a0a;
+  --text-muted: #6b6b6b;
+  --border: #e5e5e5;
+  --accent: #ff6b35;      /* Orange accent like Factory */
+  --positive: #22c55e;    /* Green for gains */
+  --negative: #ef4444;    /* Red for losses */
+}
+
+@theme inline {
+  /* Custom colors */
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+
+  /* Font families */
+  --font-display: var(--font-inter);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-roboto-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fade-in animation for debate feed items */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in;
+}

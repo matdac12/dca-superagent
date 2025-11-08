@@ -1,0 +1,61 @@
+{
+  "name": "trade-wars",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint",
+    "test-100d": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2",
+    "test-v2": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2",
+    "test-v3": "npx tsx backtesting/scripts/test-100-days-llama.ts aggressive-signals-2",
+    "test-v4": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-3",
+    "test-v5": "npx tsx backtesting/scripts/test-100-days-llama.ts cautious-signals-2-custom",
+    "test-v6": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2-strict-entry",
+    "test-v7": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2-extended-holds",
+    "test-v8": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2-aggressive-exit",
+    "test-v9": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2-hybrid-entry",
+    "test-v10": "npx tsx backtesting/scripts/test-100-days-llama.ts balanced-signals-2-volume-extended",
+    "test-365-llama": "npx tsx backtesting/scripts/test-365-days.ts llama3.1:8b",
+    "test-365-deepseek": "npx tsx backtesting/scripts/test-365-days.ts deepseek-r1:1.5b",
+    "fetch-2023-data": "npx tsx backtesting/scripts/fetch-2023-data.ts",
+    "test-2023-llama": "npx tsx backtesting/scripts/test-2023-days.ts llama3.1:8b",
+    "test-2023-deepseek": "npx tsx backtesting/scripts/test-2023-days.ts deepseek-r1:1.5b",
+    "fetch-ada-2021-2022": "npx tsx backtesting/scripts/fetch-ada-2021-2022-data.ts",
+    "test-ada-2021-2022-llama": "npx tsx backtesting/scripts/test-ada-2021-2022.ts llama3.1:8b",
+    "test-ada-2021-2022-deepseek": "npx tsx backtesting/scripts/test-ada-2021-2022.ts deepseek-r1:1.5b",
+    "test-ada-50days-llama": "npx tsx backtesting/scripts/test-ada-50days.ts llama3.1:8b",
+    "test-ada-50days-deepseek": "npx tsx backtesting/scripts/test-ada-50days.ts deepseek-r1:1.5b",
+    "save-version": "npx tsx backtesting/scripts/save-version.ts",
+    "compare-versions": "npx tsx backtesting/scripts/compare-versions.ts"
+  },
+  "dependencies": {
+    "@binance/connector": "^3.6.1",
+    "@types/uuid": "^10.0.0",
+    "dotenv": "^17.2.3",
+    "next": "15.5.4",
+    "openai": "^6.3.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "recharts": "^3.2.1",
+    "technicalindicators": "^3.1.0",
+    "uuid": "^13.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
