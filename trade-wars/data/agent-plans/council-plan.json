@@ -1,5 +1,5 @@
 {
   "agentName": "council",
-  "plan": "[MAJORITY] Both assets show mixed signals with insufficient trend data (ADX n/a), but BTC's neutral RSI (41.79) and bid-heavy order book align with normal accumulation criteria (10-20% deployment). ADA's higher RSI (62.47) and position above VWAP warrant caution to avoid FOMO-like entries. With 10k USDT available and no open orders, this conservative approach (total deployment 10%) prioritizes BTC for its relative stability ... Votes: und:60",
-  "lastUpdated": "2025-11-08T09:20:05.105Z"
+  "plan": "[MAJORITY-GPT] BTC: Current RSI 40.38 qualifies as 'Normal Accumulation' (deploy 10–20% USDT). Volatility (ATR large) and imminent US employment data argue for LIMIT orders and a staggered approach to avoid market-impact and capture better prices. Order book shows bid-heavy short-term structure; still prefer to scale in rather than use MARKET orders. ADA: RSI 56.92 and a recent +8.14% 24h move indicate short-term strength—not me... Votes: Ope:20 Gro:13 Dee:12 Gem:11",
+  "lastUpdated": "2025-11-08T13:40:54.812Z"
 }

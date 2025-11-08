@@ -3,6 +3,9 @@
  *
  * Coordinates 5 LLMs in a streamlined voting system for trading decisions.
  * Phases: Proposal → Vote
+ *
+ * Execution: Sequential (one model at a time) to prevent rate limiting
+ * and ensure all models complete within timeout limits.
  */
 
 import {
@@ -31,8 +34,8 @@ import { TradingDecision } from '@/types/trading';
 
 const DEFAULT_CONFIG: CouncilConfig = {
   models: ['OpenAI', 'Grok', 'Gemini', 'Kimi', 'DeepSeek'],
-  globalTimeoutMs: 120000, // 2 minutes for full cycle (down from 4 minutes)
-  perTurnTimeoutMs: 45000, // 45 seconds per turn (proposal or vote)
+  globalTimeoutMs: 600000, // 10 minutes for full cycle (increased for sequential execution)
+  perTurnTimeoutMs: 150000, // 150 seconds per turn (increased to handle Kimi thinking model)
   temperatures: {
     proposal: 0.0, // Deterministic decisions
     critique: 0.0, // Not used
@@ -238,12 +241,16 @@ class PhaseOrchestrator {
   }
 
   /**
-   * Phase 1: Generate proposals from all 5 models in parallel
+   * Phase 1: Generate proposals from all 5 models SEQUENTIALLY
+   * Sequential execution prevents rate limiting and ensures all models complete
    */
   async runProposalPhase(marketData: MarketIntelligence): Promise<NormalizedDecision[]> {
     this.emitEvent({ type: 'phase_start', phase: 'proposal', timestamp: Date.now() });
 
-    const promises = this.config.models.map(async (model: ModelName) => {
+    const validProposals: NormalizedDecision[] = [];
+
+    // Execute models one by one (sequential)
+    for (const model of this.config.models) {
       this.emitEvent({ type: 'model_start', model, phase: 'proposal', timestamp: Date.now() });
       const startTime = Date.now();
 
@@ -261,6 +268,8 @@ class PhaseOrchestrator {
         ]);
 
         const timeMs = Date.now() - startTime;
+        console.log(`✓ ${model} proposal completed in ${timeMs}ms`);
+
         this.emitEvent({
           type: 'model_complete',
           model,
@@ -269,8 +278,13 @@ class PhaseOrchestrator {
           timeMs,
           timestamp: Date.now(),
         });
-        return result;
+
+        validProposals.push(result);
       } catch (error: any) {
+        const timeMs = Date.now() - startTime;
+        console.error(`✗ ${model} proposal failed after ${timeMs}ms:`, error.message);
+        console.error(`  Full error:`, error);
+
         if (error.message === 'Timeout') {
           this.emitEvent({ type: 'model_timeout', model, phase: 'proposal', timestamp: Date.now() });
         } else {
@@ -282,29 +296,23 @@ class PhaseOrchestrator {
             timestamp: Date.now(),
           });
         }
-        return null;
       }
-    });
-
-    const results = await Promise.allSettled(promises);
-
-    // Filter successful proposals
-    const validProposals = results
-      .filter((r): r is PromiseFulfilledResult<NormalizedDecision> =>
-        r.status === 'fulfilled' && r.value !== null
-      )
-      .map(r => r.value);
+    }
 
     return validProposals;
   }
 
   /**
-   * Phase 2: All models vote by ranking all proposals
+   * Phase 2: All models vote by ranking all proposals SEQUENTIALLY
+   * Sequential execution prevents rate limiting and ensures all models complete
    */
   async runVotePhase(proposals: NormalizedDecision[]): Promise<VoteOutput[]> {
     this.emitEvent({ type: 'phase_start', phase: 'vote', timestamp: Date.now() });
 
-    const promises = this.config.models.map(async (model: ModelName) => {
+    const validVotes: VoteOutput[] = [];
+
+    // Execute models one by one (sequential)
+    for (const model of this.config.models) {
       this.emitEvent({ type: 'model_start', model, phase: 'vote', timestamp: Date.now() });
       const startTime = Date.now();
 
@@ -322,6 +330,8 @@ class PhaseOrchestrator {
         ]);
 
         const timeMs = Date.now() - startTime;
+        console.log(`✓ ${model} vote completed in ${timeMs}ms`);
+
         this.emitEvent({
           type: 'model_complete',
           model,
@@ -330,8 +340,13 @@ class PhaseOrchestrator {
           timeMs,
           timestamp: Date.now(),
         });
-        return result;
+
+        validVotes.push(result);
       } catch (error: any) {
+        const timeMs = Date.now() - startTime;
+        console.error(`✗ ${model} vote failed after ${timeMs}ms:`, error.message);
+        console.error(`  Full error:`, error);
+
         if (error.message === 'Timeout') {
           this.emitEvent({ type: 'model_timeout', model, phase: 'vote', timestamp: Date.now() });
         } else {
@@ -343,18 +358,8 @@ class PhaseOrchestrator {
             timestamp: Date.now(),
           });
         }
-        return null;
       }
-    });
-
-    const results = await Promise.allSettled(promises);
-
-    // Filter successful votes
-    const validVotes = results
-      .filter((r): r is PromiseFulfilledResult<VoteOutput> =>
-        r.status === 'fulfilled' && r.value !== null
-      )
-      .map(r => r.value);
+    }
 
     return validVotes;
   }

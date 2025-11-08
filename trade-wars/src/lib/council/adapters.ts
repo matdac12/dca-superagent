@@ -146,11 +146,47 @@ async function withRetry<T>(
 const VoteSchema = z.object({
   rankings: z.array(z.object({
     rank: z.number().int().min(1).max(5),
-    targetModel: z.string(),
-    justification: z.string(),
+    modelName: z.string(),
+    reasoning: z.string(),
   })).length(5),
   reasoning: z.string(),
 });
+
+/**
+ * Normalize model names from LLM responses to our canonical ModelName enum
+ * Handles variations that LLMs might return in their responses
+ */
+function normalizeModelName(modelName: string): ModelName {
+  const normalized = modelName.toLowerCase().trim();
+
+  // OpenAI variations
+  if (normalized.includes('gpt') || normalized.includes('openai')) {
+    return 'OpenAI';
+  }
+
+  // Grok variations
+  if (normalized.includes('grok') || normalized.includes('xai')) {
+    return 'Grok';
+  }
+
+  // Gemini variations
+  if (normalized.includes('gemini') || normalized.includes('google')) {
+    return 'Gemini';
+  }
+
+  // Kimi variations
+  if (normalized.includes('kimi') || normalized.includes('moonshot')) {
+    return 'Kimi';
+  }
+
+  // DeepSeek variations
+  if (normalized.includes('deepseek')) {
+    return 'DeepSeek';
+  }
+
+  // Fallback: assume it's the canonical name
+  return modelName as ModelName;
+}
 
 // Zod schema for Vercel AI SDK (proposals)
 const ProposalSchema = z.object({
@@ -196,7 +232,6 @@ export class OpenAIAdapter {
         model: this.openrouter('openai/gpt-5-mini'),
         schema: ProposalSchema,
         prompt: `${systemPrompt}\n\n${userPrompt}`,
-        temperature: 0.0,
       });
 
       const decision = result.object;
@@ -213,7 +248,7 @@ export class OpenAIAdapter {
       return {
         ...decision,
         rawText: JSON.stringify(decision.actions),
-        model: this.modelName,
+        modelName: this.modelName,
         phaseId: `proposal-${this.modelName}`,
         planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
@@ -232,7 +267,6 @@ export class OpenAIAdapter {
         model: this.openrouter('openai/gpt-5-mini'),
         schema: VoteSchema,
         prompt: `${systemPrompt}\n\n${userPrompt}`,
-        temperature: 0.0,
       });
 
       const vote = result.object;
@@ -246,7 +280,12 @@ export class OpenAIAdapter {
 
       return {
         model: this.modelName,
-        rankings: vote.rankings,
+        rankings: vote.rankings.map(r => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          modelName: normalizeModelName(r.modelName),
+          reasoning: r.reasoning,
+        })),
+        reasoning: vote.reasoning,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -301,7 +340,7 @@ export class GrokAdapter {
       return {
         ...decision,
         rawText: JSON.stringify(decision.actions),
-        model: this.modelName,
+        modelName: this.modelName,
         phaseId: `proposal-${this.modelName}`,
         planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
@@ -334,7 +373,12 @@ export class GrokAdapter {
 
       return {
         model: this.modelName,
-        rankings: vote.rankings,
+        rankings: vote.rankings.map(r => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          modelName: normalizeModelName(r.modelName),
+          reasoning: r.reasoning,
+        })),
+        reasoning: vote.reasoning,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -389,7 +433,7 @@ export class GeminiAdapter {
       return {
         ...decision,
         rawText: JSON.stringify(decision.actions),
-        model: this.modelName,
+        modelName: this.modelName,
         phaseId: `proposal-${this.modelName}`,
         planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
@@ -422,7 +466,12 @@ export class GeminiAdapter {
 
       return {
         model: this.modelName,
-        rankings: vote.rankings,
+        rankings: vote.rankings.map(r => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          modelName: normalizeModelName(r.modelName),
+          reasoning: r.reasoning,
+        })),
+        reasoning: vote.reasoning,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -477,7 +526,7 @@ export class KimiAdapter {
       return {
         ...decision,
         rawText: JSON.stringify(decision.actions),
-        model: this.modelName,
+        modelName: this.modelName,
         phaseId: `proposal-${this.modelName}`,
         planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
@@ -510,7 +559,12 @@ export class KimiAdapter {
 
       return {
         model: this.modelName,
-        rankings: vote.rankings,
+        rankings: vote.rankings.map(r => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          modelName: normalizeModelName(r.modelName),
+          reasoning: r.reasoning,
+        })),
+        reasoning: vote.reasoning,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -565,7 +619,7 @@ export class DeepSeekAdapter {
       return {
         ...decision,
         rawText: JSON.stringify(decision.actions),
-        model: this.modelName,
+        modelName: this.modelName,
         phaseId: `proposal-${this.modelName}`,
         planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
@@ -598,7 +652,12 @@ export class DeepSeekAdapter {
 
       return {
         model: this.modelName,
-        rankings: vote.rankings,
+        rankings: vote.rankings.map(r => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          modelName: normalizeModelName(r.modelName),
+          reasoning: r.reasoning,
+        })),
+        reasoning: vote.reasoning,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
