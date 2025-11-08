@@ -138,6 +138,12 @@ DECISION PROCESS:
 
    **B. actions**: Exact list from selected option
    - Each action must be fully specified (type, asset, price, quantity, reasoning)
+   - **CRITICAL**: The `quantity` field represents USD AMOUNT TO SPEND, not token quantity
+   - **CALCULATION**: quantity = (allocation_pct / 100) × total_usdt_balance
+   - **EXAMPLE**: If 25% allocation and $113,076 USDT balance:
+     * quantity = 0.25 × 113076 = $28,269 USD
+     * Set quantity field to 28269.0 (NOT 0.28 or 0.0028!)
+   - **MINIMUM**: Every quantity must be ≥ $10.00 (orders below this will be rejected)
 
    **C. plan**: Updated strategic plan for next cycle
    - 2-4 sentences summarizing current approach

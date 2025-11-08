@@ -194,8 +194,12 @@ class Action(BaseModel):
     """Single trading action"""
     type: ActionType
     asset: Optional[str] = Field(None, description="BTCUSDT or ADAUSDT")
-    price: Optional[float] = Field(None, description="Required for LIMIT orders")
-    quantity: Optional[float] = Field(None, description="Required for PLACE actions")
+    price: Optional[float] = Field(None, description="Limit price in USD. Required for LIMIT orders (e.g., 102000.0 for BTC, 0.5550 for ADA)")
+    quantity: Optional[float] = Field(
+        None,
+        description="USD amount to spend on this order (NOT token quantity). Required for PLACE actions. Example: 28269.0 means spend $28,269 USD. Must be >= 10.0",
+        ge=10.0
+    )
     order_id: Optional[str] = Field(None, description="Required for CANCEL_ORDER")
     reasoning: str = Field(..., description="Why this specific action")
 
