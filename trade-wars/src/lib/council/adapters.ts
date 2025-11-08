@@ -477,102 +477,9 @@ export class GeminiAdapter {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "trading_decision",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  minItems: 1,
-                  items: {
-                    oneOf: [
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["CANCEL_ORDER"] },
-                          orderId: { type: "string" },
-                          asset: { type: "string" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "orderId", "asset", "reasoning"],
-                        additionalProperties: false
-                      },
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["PLACE_LIMIT_BUY"] },
-                          asset: { type: "string" },
-                          quantity: { type: "number" },
-                          price: { type: "number" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "asset", "quantity", "price", "reasoning"],
-                        additionalProperties: false
-                      },
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["PLACE_LIMIT_SELL"] },
-                          asset: { type: "string" },
-                          quantity: { type: "number" },
-                          price: { type: "number" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "asset", "quantity", "price", "reasoning"],
-                        additionalProperties: false
-                      },
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["PLACE_MARKET_BUY"] },
-                          asset: { type: "string" },
-                          quantity: { type: "number" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "asset", "quantity", "reasoning"],
-                        additionalProperties: false
-                      },
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["PLACE_MARKET_SELL"] },
-                          asset: { type: "string" },
-                          quantity: { type: "number" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "asset", "quantity", "reasoning"],
-                        additionalProperties: false
-                      },
-                      {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["HOLD"] },
-                          asset: { type: "string" },
-                          reasoning: { type: "string" }
-                        },
-                        required: ["type", "reasoning"],
-                        additionalProperties: false
-                      }
-                    ]
-                  }
-                },
-                plan: {
-                  type: "string"
-                },
-                reasoning: {
-                  type: "string"
-                }
-              },
-              required: ["actions", "plan", "reasoning"],
-              additionalProperties: false
-            }
-          }
-        },
+        response_format: { type: "json_object" },
         temperature: 0.0, // Deterministic
+        max_tokens: 2000,
       });
 
       const content = completion.choices[0].message.content;
@@ -678,54 +585,9 @@ export class KimiAdapter {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "trading_decision",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  minItems: 1,
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: [
-                          "PLACE_LIMIT_BUY",
-                          "PLACE_LIMIT_SELL",
-                          "PLACE_MARKET_BUY",
-                          "PLACE_MARKET_SELL",
-                          "CANCEL_ORDER",
-                          "HOLD"
-                        ]
-                      },
-                      orderId: { type: "string" },
-                      price: { type: "number" },
-                      quantity: { type: "number" },
-                      asset: { type: "string" },
-                      reasoning: { type: "string" }
-                    },
-                    required: ["type", "reasoning"],
-                    additionalProperties: false
-                  }
-                },
-                plan: {
-                  type: "string"
-                },
-                reasoning: {
-                  type: "string"
-                }
-              },
-              required: ["actions", "plan", "reasoning"],
-              additionalProperties: false
-            }
-          }
-        },
+        response_format: { type: "json_object" },
         temperature: 0.0, // Deterministic
+        max_tokens: 2000,
       });
 
       const content = completion.choices[0].message.content;
@@ -831,54 +693,9 @@ export class DeepSeekAdapter {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "trading_decision",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  minItems: 1,
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: [
-                          "PLACE_LIMIT_BUY",
-                          "PLACE_LIMIT_SELL",
-                          "PLACE_MARKET_BUY",
-                          "PLACE_MARKET_SELL",
-                          "CANCEL_ORDER",
-                          "HOLD"
-                        ]
-                      },
-                      orderId: { type: "string" },
-                      price: { type: "number" },
-                      quantity: { type: "number" },
-                      asset: { type: "string" },
-                      reasoning: { type: "string" }
-                    },
-                    required: ["type", "reasoning"],
-                    additionalProperties: false
-                  }
-                },
-                plan: {
-                  type: "string"
-                },
-                reasoning: {
-                  type: "string"
-                }
-              },
-              required: ["actions", "plan", "reasoning"],
-              additionalProperties: false
-            }
-          }
-        },
+        response_format: { type: "json_object" },
         temperature: 0.0, // Deterministic
+        max_tokens: 2000,
       });
 
       const content = completion.choices[0].message.content;
