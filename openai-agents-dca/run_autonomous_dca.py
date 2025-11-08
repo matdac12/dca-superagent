@@ -208,8 +208,23 @@ Select THE BEST option and provide detailed reasoning.
             logger.info(f"Conviction: {selected_option.conviction}/10")
             logger.info(f"Reasoning: {decision.reasoning}")
 
-            # Parse actions from decision
-            actions = self._parse_decision_actions(decision, intelligence)
+            # Convert actions from Pydantic models to dictionaries
+            actions = []
+            for action in decision.actions:
+                action_dict = {
+                    'type': action.type.value,
+                    'asset': action.asset,
+                    'reasoning': action.reasoning
+                }
+                if action.price is not None:
+                    action_dict['price'] = action.price
+                if action.quantity is not None:
+                    action_dict['amount_usd'] = action.quantity
+                if action.order_id is not None:
+                    action_dict['order_id'] = action.order_id
+                actions.append(action_dict)
+
+            logger.info(f"Actions to execute: {len(actions)}")
 
             # STAGE 4b: Safety Validation
             logger.info("\n\n🛡️  STAGE 4B: SAFETY VALIDATION")
@@ -273,8 +288,8 @@ Audit the decision logic and execution for consistency and quality.
             verification_result = await Runner.run(verifier, verification_input)
             verification = verification_result.final_output
 
-            logger.info(f"Verification Status: {verification.status}")
-            logger.info(f"Issues: {len(verification.issues_found)}")
+            logger.info(f"Verification Status: {verification.consistency_check}")
+            logger.info(f"Issues: {len(verification.issues)}")
             logger.info(f"Recommendations: {len(verification.recommendations)}")
 
             # Generate final report
@@ -295,7 +310,7 @@ Audit the decision logic and execution for consistency and quality.
                 'strategy_options': [opt.model_dump() for opt in strategy_options.options],
                 'decision': {
                     'selected_option': decision.selected_option,
-                    'strategy_name': decision.strategy_name,
+                    'strategy_name': selected_option.strategy,
                     'reasoning': decision.reasoning,
                     'plan': decision.plan,
                     'conviction': selected_option.conviction
@@ -307,8 +322,8 @@ Audit the decision logic and execution for consistency and quality.
                 },
                 'execution': execution_result,
                 'verification': {
-                    'status': verification.status,
-                    'issues': verification.issues_found,
+                    'status': verification.consistency_check,
+                    'issues': verification.issues,
                     'recommendations': verification.recommendations,
                     'summary': verification.summary
                 }
@@ -335,7 +350,7 @@ Audit the decision logic and execution for consistency and quality.
             if not self.dry_run:
                 logger.info(f"Executed: {execution_result['executed']}")
                 logger.info(f"Failed: {execution_result['failed']}")
-            logger.info(f"Verification: {verification.status}")
+            logger.info(f"Verification: {verification.consistency_check}")
             logger.info("="*80)
 
             return report
