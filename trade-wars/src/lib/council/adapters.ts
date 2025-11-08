@@ -140,7 +140,25 @@ async function withRetry<T>(
 
 // ============================================================================
 // ZOD SCHEMAS FOR RESPONSES API
+// OpenAI Structured Outputs requirements:
+// - No .optional() (use .nullable() instead or make required)
+// - No .superRefine() or custom validation
+// - All fields must be explicitly typed
 // ============================================================================
+
+// OpenAI-compatible proposal schema (no .optional(), no .superRefine())
+const OpenAIProposalSchema = z.object({
+  actions: z.array(z.object({
+    type: z.enum(['PLACE_LIMIT_BUY', 'PLACE_LIMIT_SELL', 'PLACE_MARKET_BUY', 'PLACE_MARKET_SELL', 'CANCEL_ORDER', 'HOLD']),
+    orderId: z.string().nullable(),
+    price: z.number().nullable(),
+    quantity: z.number().nullable(),
+    asset: z.string().nullable(),
+    reasoning: z.string(),
+  })).min(1),
+  plan: z.string(),
+  reasoning: z.string(),
+});
 
 const VoteSchema = z.object({
   rankings: z.array(z.object({
@@ -240,11 +258,11 @@ export class OpenAIAdapter {
           { role: "user", content: userPrompt }
         ],
         text: {
-          format: zodTextFormat(TradingDecisionSchema, "trading_decision")
+          format: zodTextFormat(OpenAIProposalSchema, "trading_decision")
         }
       });
 
-      const decision = TradingDecisionSchema.parse(response.output_parsed);
+      const decision = OpenAIProposalSchema.parse(response.output_parsed);
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
         throw new Error('Council OpenAI proposal missing actions');
