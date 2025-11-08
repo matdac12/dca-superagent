@@ -12,6 +12,8 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
 import { TradingDecisionSchema } from '@/types/trading';
 import { buildTradingPromptWithPlan, PromptConfig } from '@/lib/prompts/tradingPromptBuilder';
 import { loadPlan, savePlan } from '@/lib/storage/agentPlans';
@@ -142,16 +144,25 @@ async function withRetry<T>(
 
 const VoteSchema = z.object({
   rankings: z.array(z.object({
-    rank: z.union([
-      z.literal(1),
-      z.literal(2),
-      z.literal(3),
-      z.literal(4),
-      z.literal(5)
-    ]),
+    rank: z.number().int().min(1).max(5),
     targetModel: z.string(),
     justification: z.string(),
-  }))
+  })).length(5),
+  reasoning: z.string(),
+});
+
+// Zod schema for Vercel AI SDK (proposals)
+const ProposalSchema = z.object({
+  actions: z.array(z.object({
+    type: z.enum(['PLACE_LIMIT_BUY', 'PLACE_LIMIT_SELL', 'PLACE_MARKET_BUY', 'PLACE_MARKET_SELL', 'CANCEL_ORDER', 'HOLD']),
+    asset: z.string().optional(),
+    quantity: z.number().optional(),
+    price: z.number().optional(),
+    orderId: z.string().optional(),
+    reasoning: z.string(),
+  })).min(1),
+  plan: z.string(),
+  reasoning: z.string(),
 });
 
 // ============================================================================
@@ -450,17 +461,17 @@ export class GrokAdapter {
 // ============================================================================
 
 export class GeminiAdapter {
-  private client: OpenAI;
+  private openrouter: ReturnType<typeof createOpenAI>;
   private modelName: ModelName = 'Gemini';
   private agentName = 'council-gemini';
 
   constructor() {
-    this.client = new OpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
+    this.openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
       apiKey: process.env.OPENROUTER_API_KEY,
-      defaultHeaders: {
-        "HTTP-Referer": "https://tradewarriors.dev",
-        "X-Title": "TradeWarriors",
+      headers: {
+        'HTTP-Referer': 'https://tradewarriors.dev',
+        'X-Title': 'TradeWarriors',
       },
     });
   }
@@ -471,22 +482,14 @@ export class GeminiAdapter {
       const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
       const userPrompt = getProposalUserPrompt(ctx);
 
-      const completion = await this.client.chat.completions.create({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 2000,
+      const result = await generateObject({
+        model: this.openrouter('google/gemini-2.5-flash'),
+        schema: ProposalSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Gemini');
-
-      const parsed = JSON.parse(content);
-      const decision = TradingDecisionSchema.parse(parsed);
+      const decision = result.object;
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
         throw new Error('Council Gemini proposal missing actions array');
@@ -515,25 +518,17 @@ export class GeminiAdapter {
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-      const completion = await this.client.chat.completions.create({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 800,
+      const result = await generateObject({
+        model: this.openrouter('google/gemini-2.5-flash'),
+        schema: VoteSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Gemini');
-
-      const cleanedContent = stripMarkdownCodeBlocks(content);
-      const parsed = JSON.parse(cleanedContent);
+      const vote = result.object;
 
       // Validate that all 5 ranks are present and unique
-      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const ranks = vote.rankings.map(r => r.rank);
       const uniqueRanks = new Set(ranks);
       if (uniqueRanks.size !== 5 || ranks.length !== 5) {
         throw new Error(`Gemini vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
@@ -541,11 +536,7 @@ export class GeminiAdapter {
 
       return {
         model: this.modelName,
-        rankings: parsed.rankings.map((r: any) => ({
-          rank: r.rank as 1 | 2 | 3 | 4 | 5,
-          targetModel: r.targetModel,
-          justification: r.justification,
-        })),
+        rankings: vote.rankings,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -558,17 +549,17 @@ export class GeminiAdapter {
 // ============================================================================
 
 export class KimiAdapter {
-  private client: OpenAI;
+  private openrouter: ReturnType<typeof createOpenAI>;
   private modelName: ModelName = 'Kimi';
   private agentName = 'council-kimi';
 
   constructor() {
-    this.client = new OpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
+    this.openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
       apiKey: process.env.OPENROUTER_API_KEY,
-      defaultHeaders: {
-        "HTTP-Referer": "https://tradewarriors.dev",
-        "X-Title": "TradeWarriors",
+      headers: {
+        'HTTP-Referer': 'https://tradewarriors.dev',
+        'X-Title': 'TradeWarriors',
       },
     });
   }
@@ -579,22 +570,14 @@ export class KimiAdapter {
       const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
       const userPrompt = getProposalUserPrompt(ctx);
 
-      const completion = await this.client.chat.completions.create({
-        model: "moonshotai/kimi-k2-thinking",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 2000,
+      const result = await generateObject({
+        model: this.openrouter('moonshotai/kimi-k2-thinking'),
+        schema: ProposalSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Kimi');
-
-      const parsed = JSON.parse(content);
-      const decision = TradingDecisionSchema.parse(parsed);
+      const decision = result.object;
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
         throw new Error('Council Kimi proposal missing actions array');
@@ -623,25 +606,17 @@ export class KimiAdapter {
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-      const completion = await this.client.chat.completions.create({
-        model: "moonshotai/kimi-k2-thinking",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 800,
+      const result = await generateObject({
+        model: this.openrouter('moonshotai/kimi-k2-thinking'),
+        schema: VoteSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Kimi');
-
-      const cleanedContent = stripMarkdownCodeBlocks(content);
-      const parsed = JSON.parse(cleanedContent);
+      const vote = result.object;
 
       // Validate that all 5 ranks are present and unique
-      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const ranks = vote.rankings.map(r => r.rank);
       const uniqueRanks = new Set(ranks);
       if (uniqueRanks.size !== 5 || ranks.length !== 5) {
         throw new Error(`Kimi vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
@@ -649,11 +624,7 @@ export class KimiAdapter {
 
       return {
         model: this.modelName,
-        rankings: parsed.rankings.map((r: any) => ({
-          rank: r.rank as 1 | 2 | 3 | 4 | 5,
-          targetModel: r.targetModel,
-          justification: r.justification,
-        })),
+        rankings: vote.rankings,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
@@ -666,17 +637,17 @@ export class KimiAdapter {
 // ============================================================================
 
 export class DeepSeekAdapter {
-  private client: OpenAI;
+  private openrouter: ReturnType<typeof createOpenAI>;
   private modelName: ModelName = 'DeepSeek';
   private agentName = 'council-deepseek';
 
   constructor() {
-    this.client = new OpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
+    this.openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
       apiKey: process.env.OPENROUTER_API_KEY,
-      defaultHeaders: {
-        "HTTP-Referer": "https://tradewarriors.dev",
-        "X-Title": "TradeWarriors",
+      headers: {
+        'HTTP-Referer': 'https://tradewarriors.dev',
+        'X-Title': 'TradeWarriors',
       },
     });
   }
@@ -687,22 +658,14 @@ export class DeepSeekAdapter {
       const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
       const userPrompt = getProposalUserPrompt(ctx);
 
-      const completion = await this.client.chat.completions.create({
-        model: "deepseek/deepseek-chat-v3-0324",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 2000,
+      const result = await generateObject({
+        model: this.openrouter('deepseek/deepseek-chat-v3-0324'),
+        schema: ProposalSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from DeepSeek');
-
-      const parsed = JSON.parse(content);
-      const decision = TradingDecisionSchema.parse(parsed);
+      const decision = result.object;
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
         throw new Error('Council DeepSeek proposal missing actions array');
@@ -731,25 +694,17 @@ export class DeepSeekAdapter {
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-      const completion = await this.client.chat.completions.create({
-        model: "deepseek/deepseek-chat-v3-0324",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 800,
+      const result = await generateObject({
+        model: this.openrouter('deepseek/deepseek-chat-v3-0324'),
+        schema: VoteSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from DeepSeek');
-
-      const cleanedContent = stripMarkdownCodeBlocks(content);
-      const parsed = JSON.parse(cleanedContent);
+      const vote = result.object;
 
       // Validate that all 5 ranks are present and unique
-      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const ranks = vote.rankings.map(r => r.rank);
       const uniqueRanks = new Set(ranks);
       if (uniqueRanks.size !== 5 || ranks.length !== 5) {
         throw new Error(`DeepSeek vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
@@ -757,11 +712,7 @@ export class DeepSeekAdapter {
 
       return {
         model: this.modelName,
-        rankings: parsed.rankings.map((r: any) => ({
-          rank: r.rank as 1 | 2 | 3 | 4 | 5,
-          targetModel: r.targetModel,
-          justification: r.justification,
-        })),
+        rankings: vote.rankings,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };

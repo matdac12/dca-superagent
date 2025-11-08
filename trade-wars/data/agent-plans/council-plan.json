@@ -1,5 +1,5 @@
 {
   "agentName": "council",
-  "plan": "[NONE] Only 2 models voted successfully. Minimum 3 required for council decision.",
-  "lastUpdated": "2025-11-08T08:28:12.885Z"
+  "plan": "[MAJORITY] Data-supported assessment: BTC RSI 43.14 indicates neutral; current price ~102,480 with 96h high near 110k and a wide ATR suggesting elevated volatility; near-term support appears around 102,480 as shown by top bid levels at 102,479.77 and strong local bid depth. ADA RSI 64.54 indicates not oversold and price at ~0.5858 with 96h range 0.5176-0.5927; 24h gain of +7.17% signals strength rather than capitulation. Bot... Votes: und:60",
+  "lastUpdated": "2025-11-08T08:57:44.690Z"
 }

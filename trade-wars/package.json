@@ -35,8 +35,10 @@
     "compare-versions": "npx tsx backtesting/scripts/compare-versions.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.64",
     "@binance/connector": "^3.6.1",
     "@types/uuid": "^10.0.0",
+    "ai": "^5.0.89",
     "dotenv": "^17.2.3",
     "next": "15.5.4",
     "openai": "^6.3.0",
