@@ -1,5 +1,5 @@
 {
   "agentName": "council-openai",
-  "plan": "Plan: Execute a modest MARKET buy of 0.0008 BTC (~$85–$90) to participate in the current bullish momentum. Reassess in 4 hours with updated data. Maintain risk controls: no open limit orders now (capacity for up to 3 later), limit total open order value to ≤50% of portfolio, and invalidate the thesis if price moves >1.5 ATR against entry (ATR 1,131.71 -> ~1,697.57 distance). If momentum persists, consider laddered LIMIT entries/exits in subsequent cycles at incremental prices while keeping diversification and capital protection in mind. Ensure compliance with daily cap (10 trades) and minimum order size ($10). Expect potential macro-driven volatility (US employment data) but current indicators favor a long bias.",
-  "lastUpdated": "2025-10-18T21:48:08.652Z"
+  "plan": "Deployment plan for this cycle: allocate ~15% of available USDT (~$1,500) across BTC and ADA, with BTC as the primary focus due to relatively lower RSI and proximity to key macro/technical support zones. Execute via limit ladder (BTC at -2% and -3%; ADA at -2%). Open orders capped at 3 per asset (we have BTC-2, BTC-3, ADA-1). If fills occur, reassess remaining USDT; if none fill within 48 hours, reevaluate prices or cancel and wait for a clearer dip. Next cycle: re-evaluate BTC/ADA momentum, monitor macro data (US employment data, volatility catalysts) and adjust entry points accordingly. Emphasize accumulation over holding; no profit-taking or selling unless extreme risk event occurs.",
+  "lastUpdated": "2025-11-08T08:17:37.952Z"
 }

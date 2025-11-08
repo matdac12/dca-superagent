@@ -40,7 +40,8 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   const btcBalance = marketData.balances.find(b => b.asset === 'BTC')?.total || 0;
   const adaBalance = marketData.balances.find(b => b.asset === 'ADA')?.total || 0;
 
-  const currentPrice = marketData.ticker.lastPrice;
+  // Handle dual-asset market intelligence format (btc.ticker) or legacy single-asset format (ticker)
+  const currentPrice = marketData.btc?.ticker?.lastPrice || marketData.ticker?.lastPrice || 0;
   const portfolioValueUSD = usdtBalance + (btcBalance * currentPrice);
 
   const MIN_ORDER_VALUE_USD = 10;
@@ -48,23 +49,23 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   const maxSellBTC = Math.min(btcBalance * 0.995, (portfolioValueUSD * 0.50) / currentPrice);
   const maxSellValueUSD = maxSellBTC * currentPrice;
 
-  const recentKlines = marketData.klines;
-  const priceRangeHigh = Math.max(...recentKlines.map(k => k.high));
-  const priceRangeLow = Math.min(...recentKlines.map(k => k.low));
-  const priceRangeAvg = recentKlines.reduce((sum, k) => sum + k.close, 0) / recentKlines.length;
+  // Handle dual-asset format (btc.klines) or legacy single-asset format (klines)
+  const recentKlines = marketData.btc?.klines || marketData.klines || [];
+  const priceRangeHigh = recentKlines.length > 0 ? Math.max(...recentKlines.map(k => k.high)) : currentPrice;
+  const priceRangeLow = recentKlines.length > 0 ? Math.min(...recentKlines.map(k => k.low)) : currentPrice;
+  const priceRangeAvg = recentKlines.length > 0 ? recentKlines.reduce((sum, k) => sum + k.close, 0) / recentKlines.length : currentPrice;
 
-  const tradeHistoryEntries = marketData.tradeHistory.entries;
-  const tradeHistorySummary = marketData.tradeHistory.summary;
-  const indicatorsFormatted = marketData.indicators.formatted;
-  const orderBookSummary = marketData.orderBook?.summary ?? 'Order book data unavailable.';
-  const orderBookBids = marketData.orderBook
-    ? marketData.orderBook.formatted.bids.slice(0, 10)
-    : ['No order book bids available.'];
-  const orderBookAsks = marketData.orderBook
-    ? marketData.orderBook.formatted.asks.slice(0, 10)
-    : ['No order book asks available.'];
+  const tradeHistoryEntries = marketData.tradeHistory?.entries || [];
+  const tradeHistorySummary = marketData.tradeHistory?.summary || 'No trade history';
+  const indicatorsFormatted = marketData.btc?.indicators?.formatted || marketData.indicators?.formatted || 'No indicators available';
+  const orderBookData = marketData.btc?.orderBook || marketData.orderBook;
+  const orderBookSummary = orderBookData?.summary ?? 'Order book data unavailable.';
+  const orderBookBids = orderBookData?.formatted?.bids?.slice(0, 10) || ['No order book bids available.'];
+  const orderBookAsks = orderBookData?.formatted?.asks?.slice(0, 10) || ['No order book asks available.'];
 
   const marketNewsFormatted = marketData.marketNews?.formatted ?? null;
+
+  const ticker = marketData.btc?.ticker || marketData.ticker || {};
 
   return {
     usdtBalance,
@@ -76,11 +77,11 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
     maxSellBTC,
     maxSellValueUSD,
     MIN_ORDER_VALUE_USD,
-    priceChangePercent: marketData.ticker.priceChangePercent,
-    high24h: marketData.ticker.highPrice,
-    low24h: marketData.ticker.lowPrice,
-    volume24h: marketData.ticker.volume,
-    quoteVolume24h: marketData.ticker.quoteVolume,
+    priceChangePercent: ticker.priceChangePercent || 0,
+    high24h: ticker.highPrice || 0,
+    low24h: ticker.lowPrice || 0,
+    volume24h: ticker.volume || 0,
+    quoteVolume24h: ticker.quoteVolume || 0,
     priceRangeHigh,
     priceRangeLow,
     priceRangeAvg,

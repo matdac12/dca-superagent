@@ -70,13 +70,19 @@ export async function POST(request: Request) {
       marketData = await marketIntelligenceResponse.json();
     }
 
-    console.log(`✓ Market data ready: BTC price $${marketData.ticker.lastPrice}`);
+    // Handle dual-asset market intelligence format
+    const btcPrice = marketData.btc?.ticker?.lastPrice || marketData.ticker?.lastPrice;
+    const adaPrice = marketData.ada?.ticker?.lastPrice;
+    const balances = marketData.balances;
+
+    console.log(`✓ Market data ready: BTC $${btcPrice}${adaPrice ? `, ADA $${adaPrice}` : ''}`);
 
     // Calculate portfolio value before trade
     const currentPrices = {
-      BTCUSDT: marketData.ticker.lastPrice,
+      BTCUSDT: btcPrice,
+      ...(adaPrice && { ADAUSDT: adaPrice })
     };
-    const portfolioValueBefore = calculateTotalPortfolioValue(marketData.balances, currentPrices);
+    const portfolioValueBefore = calculateTotalPortfolioValue(balances, currentPrices);
 
     // Step 2: Run council debate (execution happens inside this function)
     console.log('🧠 Running council debate...');
@@ -190,8 +196,8 @@ export async function POST(request: Request) {
     await logTrade({
       decision: councilDecision,
       marketData: {
-        symbol: marketData.symbol,
-        ticker: marketData.ticker,
+        symbol: 'BTCUSDT', // Primary symbol for council
+        ticker: marketData.btc?.ticker || marketData.ticker || { lastPrice: btcPrice },
         balances: updatedBalances
       },
       executedOrder,
@@ -228,11 +234,11 @@ export async function POST(request: Request) {
         individualProposals: proposalsObject
       },
       marketSnapshot: {
-        price: marketData.ticker.lastPrice,
-        priceChange24h: marketData.ticker.priceChangePercent,
-        high24h: marketData.ticker.highPrice,
-        low24h: marketData.ticker.lowPrice,
-        volume24h: marketData.ticker.volume
+        price: btcPrice,
+        priceChange24h: marketData.btc?.ticker?.priceChangePercent || marketData.ticker?.priceChangePercent || 0,
+        high24h: marketData.btc?.ticker?.highPrice || marketData.ticker?.highPrice || 0,
+        low24h: marketData.btc?.ticker?.lowPrice || marketData.ticker?.lowPrice || 0,
+        volume24h: marketData.btc?.ticker?.volume || marketData.ticker?.volume || 0
       },
       portfolio: {
         valueBefore: portfolioValueBefore,
