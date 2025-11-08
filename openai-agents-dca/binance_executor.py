@@ -124,29 +124,42 @@ class BinanceExecutor:
             Order response from Binance
         """
         symbol = action['asset']
-        limit_price = action['price']
+        original_price = action['price']
         amount_usd = action['amount_usd']
 
-        # Calculate quantity based on price
+        # Normalize price to match Binance tick size
+        limit_price = self._normalize_price(symbol, original_price)
+        if limit_price != original_price:
+            logger.info(f"  Price normalized: ${original_price:.8f} → ${limit_price:.8f}")
+
+        # Calculate quantity based on normalized price
         quantity = amount_usd / limit_price
 
-        # Get symbol info for lot size filters
+        # Normalize quantity to match Binance lot size
+        original_quantity = quantity
         quantity = self._normalize_quantity(symbol, quantity)
+        if quantity != original_quantity:
+            logger.info(f"  Quantity normalized: {original_quantity:.8f} → {quantity:.8f}")
 
         # Place limit buy order
         try:
+            # Format price and quantity as strings with appropriate precision
+            price_str = f"{limit_price:.8f}".rstrip('0').rstrip('.')
+            quantity_str = f"{quantity:.8f}".rstrip('0').rstrip('.')
+
             order = self.client.order_limit_buy(
                 symbol=symbol,
-                quantity=quantity,
-                price=f"{limit_price:.8f}"
+                quantity=quantity_str,
+                price=price_str
             )
 
-            logger.debug(f"Limit BUY order placed: {symbol} qty={quantity:.8f} @ ${limit_price:.4f}")
+            logger.debug(f"Limit BUY order placed: {symbol} qty={quantity_str} @ ${price_str}")
 
             return order
 
         except BinanceAPIException as e:
             logger.error(f"Binance API error placing BUY order: {e}")
+            logger.error(f"  Order details: {symbol} qty={quantity_str} price={price_str}")
             raise
 
     def _execute_limit_sell(self, action: Dict) -> Dict:
@@ -160,30 +173,88 @@ class BinanceExecutor:
             Order response from Binance
         """
         symbol = action['asset']
-        limit_price = action['price']
+        original_price = action['price']
         amount_usd = action['amount_usd']
 
-        # Calculate quantity based on price
+        # Normalize price to match Binance tick size
+        limit_price = self._normalize_price(symbol, original_price)
+        if limit_price != original_price:
+            logger.info(f"  Price normalized: ${original_price:.8f} → ${limit_price:.8f}")
+
+        # Calculate quantity based on normalized price
         quantity = amount_usd / limit_price
 
-        # Get symbol info for lot size filters
+        # Normalize quantity to match Binance lot size
+        original_quantity = quantity
         quantity = self._normalize_quantity(symbol, quantity)
+        if quantity != original_quantity:
+            logger.info(f"  Quantity normalized: {original_quantity:.8f} → {quantity:.8f}")
 
         # Place limit sell order
         try:
+            # Format price and quantity as strings with appropriate precision
+            price_str = f"{limit_price:.8f}".rstrip('0').rstrip('.')
+            quantity_str = f"{quantity:.8f}".rstrip('0').rstrip('.')
+
             order = self.client.order_limit_sell(
                 symbol=symbol,
-                quantity=quantity,
-                price=f"{limit_price:.8f}"
+                quantity=quantity_str,
+                price=price_str
             )
 
-            logger.debug(f"Limit SELL order placed: {symbol} qty={quantity:.8f} @ ${limit_price:.4f}")
+            logger.debug(f"Limit SELL order placed: {symbol} qty={quantity_str} @ ${price_str}")
 
             return order
 
         except BinanceAPIException as e:
             logger.error(f"Binance API error placing SELL order: {e}")
+            logger.error(f"  Order details: {symbol} qty={quantity_str} price={price_str}")
             raise
+
+    def _normalize_price(self, symbol: str, price: float) -> float:
+        """
+        Normalize price to match Binance tick size filters
+
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT')
+            price: Raw price
+
+        Returns:
+            Normalized price that meets Binance requirements
+        """
+        try:
+            # Get symbol info
+            info = self.client.get_symbol_info(symbol)
+
+            # Find PRICE_FILTER
+            price_filter = next(
+                (f for f in info['filters'] if f['filterType'] == 'PRICE_FILTER'),
+                None
+            )
+
+            if price_filter:
+                tick_size = float(price_filter['tickSize'])
+                min_price = float(price_filter['minPrice'])
+                max_price = float(price_filter['maxPrice'])
+
+                # Round to nearest tick size
+                # Use round() instead of floor to get closest valid price
+                price = round(price / tick_size) * tick_size
+
+                # Ensure within min/max bounds
+                if price < min_price:
+                    logger.warning(f"Price {price} below minimum {min_price}, using minimum")
+                    price = min_price
+                elif price > max_price:
+                    logger.warning(f"Price {price} above maximum {max_price}, using maximum")
+                    price = max_price
+
+            return price
+
+        except Exception as e:
+            logger.error(f"Failed to normalize price: {e}")
+            # Return original price as fallback
+            return price
 
     def _normalize_quantity(self, symbol: str, quantity: float) -> float:
         """
