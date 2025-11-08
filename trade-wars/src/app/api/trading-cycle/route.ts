@@ -1,30 +1,41 @@
 /**
  * Trading Cycle API Endpoint
- * Triggers all 4 trading agents simultaneously with shared market data
+ * Triggers the 5-model council for collaborative trading decisions
  *
  * SCHEDULE: Every 8 hours (3x daily: 8 AM, 4 PM, Midnight UTC)
- * STRATEGY: Long-term accumulation of BTC and ADA
+ * STRATEGY: Long-term accumulation of BTC and ADA via 5-model consensus
+ * MODELS: OpenAI GPT-5-Nano, Grok 4 Fast, Gemini 2.5 Flash, Kimi K2, DeepSeek Chat v3
  */
 
 import { NextResponse } from 'next/server';
-import { getAllAgents } from '@/config/agents';
 
-interface AgentResult {
-  agent: string;
+interface CouncilResult {
   success: boolean;
+  timestamp: string;
   decision?: {
-    action: 'BUY' | 'SELL' | 'HOLD';
-    asset: string;
-    quantity: number;
+    actions: Array<{
+      type: string;
+      asset?: string;
+      quantity?: number;
+      price?: number;
+      reasoning: string;
+    }>;
+    plan: string;
     reasoning: string;
   };
-  order?: {
+  executedOrder?: {
     orderId: string;
-    symbol: string;
-    side: string;
     price: number;
     quantity: number;
     status: string;
+  };
+  meta?: {
+    selectedModel: string;
+    consensusType: string;
+    totalTimeMs: number;
+    voteScores: Record<string, number>;
+    votingMatrix: Record<string, Record<string, number>>;
+    individualProposals: Record<string, any>;
   };
   error?: string;
 }
@@ -32,7 +43,7 @@ interface AgentResult {
 interface TradingCycleResponse {
   success: boolean;
   timestamp: string;
-  results: AgentResult[];
+  councilResult: CouncilResult;
   marketSnapshot: {
     price: number;
     priceChange24h: number;
@@ -42,93 +53,13 @@ interface TradingCycleResponse {
   };
 }
 
-/**
- * Maps agent names to their API endpoints
- */
-const AGENT_ENDPOINTS: Record<string, string> = {
-  openai: '/api/trading-agent',
-  grok: '/api/trading-agent-grok',
-  gemini: '/api/trading-agent-gemini',
-  council: '/api/trading-agent-council',
-};
-
-/**
- * Executes a single agent's trading logic
- * @param agentName - Name of the agent to execute
- * @param baseUrl - Base URL for API calls
- * @param marketData - Shared market intelligence data
- * @returns Agent result with decision and order info
- */
-async function executeAgent(agentName: string, baseUrl: string, marketData: any): Promise<AgentResult> {
-  const endpoint = AGENT_ENDPOINTS[agentName];
-
-  if (!endpoint) {
-    return {
-      agent: agentName,
-      success: false,
-      error: `Unknown agent: ${agentName}`,
-    };
-  }
-
-  try {
-    console.log(`[Trading Cycle] Executing ${agentName} agent...`);
-
-    const response = await fetch(`${baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ marketData }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      return {
-        agent: agentName,
-        success: false,
-        error: errorData.error || `HTTP ${response.status}`,
-      };
-    }
-
-    const data = await response.json();
-
-    // Extract relevant fields from agent response
-    return {
-      agent: agentName,
-      success: data.success || false,
-      decision: data.decision ? {
-        action: data.decision.action,
-        asset: data.decision.asset,
-        quantity: data.decision.quantity,
-        reasoning: data.decision.reasoning,
-      } : undefined,
-      order: data.order ? {
-        orderId: data.order.orderId,
-        symbol: data.order.symbol,
-        side: data.order.side,
-        price: data.order.price,
-        quantity: data.order.quantity,
-        status: data.order.status,
-      } : undefined,
-      error: data.executionError || data.error,
-    };
-  } catch (error: any) {
-    console.error(`[Trading Cycle] Error executing ${agentName}:`, error.message);
-    return {
-      agent: agentName,
-      success: false,
-      error: error.message || 'Agent execution failed',
-    };
-  }
-}
-
 export async function POST() {
   try {
-    console.log('🔄 Trading cycle started - executing all 4 agents...');
+    console.log('🔄 Trading cycle started - executing 5-model council...');
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-    // Step 1: Fetch market intelligence once (to be shared by all agents)
+    // Step 1: Fetch market intelligence for both BTC and ADA
     console.log('📊 Fetching market intelligence...');
     const marketIntelligenceResponse = await fetch(`${baseUrl}/api/market-intelligence`);
 
@@ -139,43 +70,40 @@ export async function POST() {
     const marketData = await marketIntelligenceResponse.json();
     console.log(`✓ Market data fetched: BTC price $${marketData.ticker.lastPrice}`);
 
-    // Step 2: Get all agent configurations
-    const agents = getAllAgents();
-    const agentNames = agents.map(a => a.name);
-
-    console.log(`🤖 Executing ${agentNames.length} agents in parallel: ${agentNames.join(', ')}`);
-
-    // Step 3: Execute all agents in parallel using Promise.allSettled
-    // This ensures that if one agent fails, others continue executing
-    // Pass shared marketData to all agents (avoid duplicate API calls)
-    const agentPromises = agentNames.map(agentName =>
-      executeAgent(agentName, baseUrl, marketData)
-    );
-
-    const results = await Promise.allSettled(agentPromises);
-
-    // Step 4: Process results
-    const agentResults: AgentResult[] = results.map((result, index) => {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      } else {
-        // Promise was rejected
-        return {
-          agent: agentNames[index],
-          success: false,
-          error: result.reason?.message || 'Unknown error',
-        };
-      }
+    // Step 2: Execute council debate (5 models: OpenAI, Grok, Gemini, Kimi, DeepSeek)
+    console.log('🏛️ Executing 5-model council debate...');
+    const councilResponse = await fetch(`${baseUrl}/api/trading-agent-council`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ marketData }),
     });
 
-    // Step 5: Determine overall success
-    const successfulAgents = agentResults.filter(r => r.success).length;
-    const totalAgents = agentResults.length;
-    const overallSuccess = successfulAgents > 0; // At least one agent succeeded
+    if (!councilResponse.ok) {
+      const errorData = await councilResponse.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`Council execution failed: ${errorData.error || `HTTP ${councilResponse.status}`}`);
+    }
 
-    console.log(`✅ Trading cycle completed: ${successfulAgents}/${totalAgents} agents succeeded`);
+    const councilResult: CouncilResult = await councilResponse.json();
 
-    // Step 6: Build market snapshot
+    // Log council decision summary
+    const actionType = councilResult.decision?.actions?.[0]?.type || 'UNKNOWN';
+    const actionAsset = councilResult.decision?.actions?.[0]?.asset || 'N/A';
+    const selectedModel = councilResult.meta?.selectedModel || 'Unknown';
+    const consensusType = councilResult.meta?.consensusType || 'none';
+
+    console.log(`✅ Council decision: ${actionType} on ${actionAsset}`);
+    console.log(`   Selected model: ${selectedModel} (${consensusType} consensus)`);
+
+    if (councilResult.meta?.voteScores) {
+      const scores = Object.entries(councilResult.meta.voteScores)
+        .map(([model, score]) => `${model}:${score}`)
+        .join(', ');
+      console.log(`   Vote scores: ${scores}`);
+    }
+
+    // Step 3: Build market snapshot
     const marketSnapshot = {
       price: marketData.ticker.lastPrice,
       priceChange24h: marketData.ticker.priceChangePercent,
@@ -184,11 +112,11 @@ export async function POST() {
       volume24h: marketData.ticker.volume,
     };
 
-    // Step 7: Return comprehensive response
+    // Step 4: Return comprehensive response
     const response: TradingCycleResponse = {
-      success: overallSuccess,
+      success: councilResult.success,
       timestamp: new Date().toISOString(),
-      results: agentResults,
+      councilResult,
       marketSnapshot,
     };
 
@@ -201,7 +129,11 @@ export async function POST() {
         success: false,
         timestamp: new Date().toISOString(),
         error: error.message || 'Trading cycle failed',
-        results: [],
+        councilResult: {
+          success: false,
+          timestamp: new Date().toISOString(),
+          error: error.message || 'Council execution failed',
+        },
         marketSnapshot: {
           price: 0,
           priceChange24h: 0,

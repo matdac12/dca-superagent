@@ -91,9 +91,12 @@ export async function POST(request: Request) {
 
     // Step 3: Build concise council plan (max 500 chars)
     const selectedModelName = finalDecision._meta.selectedModel
-      ? finalDecision._meta.selectedModel.replace('gpt-5-nano', 'GPT')
-          .replace('grok-4-fast', 'Grok')
-          .replace('google/gemini-2.5-flash', 'Gemini')
+      ? finalDecision._meta.selectedModel
+          .replace('OpenAI', 'GPT')
+          .replace('Grok', 'Grok')
+          .replace('Gemini', 'Gemini')
+          .replace('Kimi', 'Kimi')
+          .replace('DeepSeek', 'DS')
       : 'None';
 
     const voteInfo = finalDecision._meta.voteScores
@@ -140,34 +143,35 @@ export async function POST(request: Request) {
       reasoning: `[Council ${finalDecision._meta.consensusType}] ${finalDecision.reasoning}`
     };
 
-    // Step 6: Calculate vote breakdown from proposals (BUY/SELL/HOLD counts)
+    // Step 6: Convert proposals array to object with model keys (all 5 models)
     const proposals = finalDecision._meta.individualProposals || [];
-    const voteBreakdown = { BUY: 0, SELL: 0, HOLD: 0 };
-
-    proposals.forEach((proposal: any) => {
-      const actionType = proposal.actions?.[0]?.type;
-      if (actionType === 'PLACE_MARKET_BUY' || actionType === 'PLACE_LIMIT_BUY') {
-        voteBreakdown.BUY++;
-      } else if (actionType === 'PLACE_MARKET_SELL' || actionType === 'PLACE_LIMIT_SELL') {
-        voteBreakdown.SELL++;
-      } else if (actionType === 'HOLD') {
-        voteBreakdown.HOLD++;
-      }
-    });
-
-    // Convert proposals array to object with model keys
     const proposalsObject: any = {};
+
     proposals.forEach((proposal: any) => {
-      const modelKey = proposal.model.includes('gpt') ? 'openai'
-        : proposal.model.includes('grok') ? 'grok'
-        : proposal.model.includes('gemini') ? 'gemini'
-        : null;
+      // Normalize model names to lowercase keys
+      const modelName = proposal.model || proposal.modelName || '';
+      let modelKey: string | null = null;
+
+      if (modelName === 'OpenAI' || modelName.includes('gpt')) {
+        modelKey = 'openai';
+      } else if (modelName === 'Grok' || modelName.includes('grok')) {
+        modelKey = 'grok';
+      } else if (modelName === 'Gemini' || modelName.includes('gemini')) {
+        modelKey = 'gemini';
+      } else if (modelName === 'Kimi' || modelName.includes('kimi') || modelName.includes('moonshot')) {
+        modelKey = 'kimi';
+      } else if (modelName === 'DeepSeek' || modelName.includes('deepseek')) {
+        modelKey = 'deepseek';
+      }
 
       if (modelKey) {
         proposalsObject[modelKey] = {
           action: proposal.actions?.[0]?.type || 'UNKNOWN',
           reasoning: proposal.reasoning || '',
           plan: proposal.plan || '',
+          quantity: proposal.actions?.[0]?.quantity,
+          price: proposal.actions?.[0]?.price,
+          asset: proposal.actions?.[0]?.asset || proposal.asset,
         };
       }
     });
@@ -198,7 +202,7 @@ export async function POST(request: Request) {
       aiModel: 'council',
       councilMetadata: {
         individualProposals: proposalsObject,
-        voteBreakdown,
+        votingMatrix: finalDecision._meta.votingMatrix || {},
         selectedModel: finalDecision._meta.selectedModel || '',
         consensusType: finalDecision._meta.consensusType || 'none',
         voteScores: finalDecision._meta.voteScores || {},
@@ -220,7 +224,8 @@ export async function POST(request: Request) {
         consensusType: finalDecision._meta.consensusType,
         totalTimeMs: finalDecision._meta.totalTimeMs,
         voteScores: finalDecision._meta.voteScores,
-        individualProposals: finalDecision._meta.individualProposals || []
+        votingMatrix: finalDecision._meta.votingMatrix || {},
+        individualProposals: proposalsObject
       },
       marketSnapshot: {
         price: marketData.ticker.lastPrice,

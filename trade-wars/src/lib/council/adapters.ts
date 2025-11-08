@@ -1,11 +1,12 @@
 /**
- * Real LLM adapters for Council Debate system
+ * Real LLM adapters for 2-Phase Council Debate system
  *
- * Each adapter implements the 4 debate phases:
+ * Each adapter implements 2 debate phases:
  * 1. Proposal - initial trading decision
- * 2. Critique - analyze other models' proposals
- * 3. Revision - update decision based on critiques
- * 4. Vote - rank other models' revised decisions
+ * 2. Vote - rank ALL 5 proposals (1-5 points)
+ *
+ * Temperature: 0.0 (deterministic decisions)
+ * Models: OpenAI, Grok, Gemini, Kimi, DeepSeek
  */
 
 import OpenAI from 'openai';
@@ -16,22 +17,15 @@ import { buildTradingPromptWithPlan, PromptConfig } from '@/lib/prompts/tradingP
 import { loadPlan, savePlan } from '@/lib/storage/agentPlans';
 import { getOpenOrders } from '@/lib/binance/openOrders';
 import { getAgentConfig } from '@/config/agents';
-import { validateRiskLimits } from '@/lib/execution/orderValidator';
-import { executeActions } from '@/lib/execution/multiActionExecutor';
 import {
   ModelName,
   NormalizedDecision,
-  CritiqueOutput,
   VoteOutput,
   MarketIntelligence,
 } from './types';
 import {
   getProposalSystemPrompt,
   getProposalUserPrompt,
-  getCritiqueSystemPrompt,
-  getCritiqueUserPrompt,
-  getRevisionSystemPrompt,
-  getRevisionUserPrompt,
   getVoteSystemPrompt,
   getVoteUserPrompt,
   PromptContext,
@@ -44,6 +38,8 @@ import {
 function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   const usdtBalance = marketData.balances.find(b => b.asset === 'USDT')?.total || 0;
   const btcBalance = marketData.balances.find(b => b.asset === 'BTC')?.total || 0;
+  const adaBalance = marketData.balances.find(b => b.asset === 'ADA')?.total || 0;
+
   const currentPrice = marketData.ticker.lastPrice;
   const portfolioValueUSD = usdtBalance + (btcBalance * currentPrice);
 
@@ -73,6 +69,7 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   return {
     usdtBalance,
     btcBalance,
+    adaBalance, // Added for dual-asset support
     currentPrice,
     portfolioValueUSD,
     maxBuyUSDT,
@@ -97,19 +94,6 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   };
 }
 
-function calculateExposure(openOrders: any[], currentPrice: number, balances: MarketIntelligence['balances']): number {
-  const limitExposure = openOrders.reduce((total, order) => {
-    const price = Number(order.price ?? currentPrice);
-    const quantity = Number(order.origQty ?? order.quantity ?? 0);
-    return total + price * quantity;
-  }, 0);
-
-  const btcHoldingValue =
-    (balances.find(b => b.asset === 'BTC')?.total ?? 0) * currentPrice;
-
-  return limitExposure + btcHoldingValue;
-}
-
 /**
  * Normalize action types for consensus checking
  * Maps PLACE_LIMIT_BUY, PLACE_MARKET_BUY → BUY
@@ -124,22 +108,46 @@ function normalizeActionType(actionType: string): 'BUY' | 'SELL' | 'HOLD' | 'CAN
   return 'HOLD';
 }
 
+/**
+ * Retry wrapper for API calls with exponential backoff
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  modelName: string,
+  maxRetries = 1
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`[${new Date().toISOString()}] ${modelName} API call failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, etc.
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw new Error(`${modelName} failed after ${maxRetries + 1} attempts: ${lastError?.message}`);
+}
+
 // ============================================================================
 // ZOD SCHEMAS FOR RESPONSES API
 // ============================================================================
 
-const CritiqueSchema = z.object({
-  critiques: z.array(z.object({
-    targetModel: z.string(),
-    critique: z.string(),
-    risks: z.array(z.string()).optional(),
-    conflicts: z.array(z.string()).optional(),
-  }))
-});
-
 const VoteSchema = z.object({
   rankings: z.array(z.object({
-    rank: z.union([z.literal(1), z.literal(2)]),
+    rank: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5)
+    ]),
     targetModel: z.string(),
     justification: z.string(),
   }))
@@ -151,7 +159,7 @@ const VoteSchema = z.object({
 
 export class OpenAIAdapter {
   private client: OpenAI;
-  private modelName: ModelName = 'gpt-5-nano';
+  private modelName: ModelName = 'OpenAI';
   private agentName = 'council-openai';
 
   constructor() {
@@ -172,14 +180,12 @@ export class OpenAIAdapter {
       return null;
     });
 
-    const openOrders = await getOpenOrders(
-      marketData.symbol,
-      agentConfig.binanceApiKey,
-      agentConfig.binanceSecretKey
-    ).catch(error => {
-      console.warn(`Failed to fetch open orders for ${this.agentName}:`, error);
-      return marketData.openOrders ?? [];
-    });
+    // Fetch open orders for both BTC and ADA
+    const [btcOrders, adaOrders] = await Promise.all([
+      getOpenOrders('BTCUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => []),
+      getOpenOrders('ADAUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => [])
+    ]);
+    const openOrders = [...btcOrders, ...adaOrders];
 
     const promptConfig: PromptConfig = {
       tone: 'analytical',
@@ -211,192 +217,84 @@ export class OpenAIAdapter {
     return { systemPrompt, userPrompt, openOrders, previousPlan };
   }
 
-  async generateProposal(marketData: MarketIntelligence): Promise<NormalizedDecision> {
-    const { systemPrompt, userPrompt, openOrders, previousPlan } = await this.buildPrompts(marketData);
+  async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
+    return withRetry(async () => {
+      const { systemPrompt, userPrompt, previousPlan } = await this.buildPrompts(marketData);
 
-    const response = await this.client.responses.parse({
-      model: this.modelName,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      text: {
-        format: zodTextFormat(TradingDecisionSchema, "trading_decision")
-      }
-    });
-
-    const decision = TradingDecisionSchema.parse(response.output_parsed);
-
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council OpenAI proposal missing actions');
-    }
-
-    if (!decision.plan?.trim()) {
-      throw new Error('Council OpenAI proposal missing plan');
-    }
-
-    // Note: Risk validation and execution happen later in the council orchestrator
-    // after consensus is reached. Proposal phase only returns the decision.
-    await savePlan(this.agentName, decision.plan);
-
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `proposal-${this.modelName}`,
-      planSnapshot: previousPlan?.plan ?? decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
-  }
-
-  async generateCritique(proposals: NormalizedDecision[]): Promise<CritiqueOutput[]> {
-    const systemPrompt = getCritiqueSystemPrompt(this.modelName);
-    const userPrompt = getCritiqueUserPrompt(proposals, this.modelName);
-
-    const response = await this.client.responses.parse({
-      model: this.modelName,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      text: {
-        format: zodTextFormat(CritiqueSchema, "critique_response")
-      }
-    });
-
-    const parsed = CritiqueSchema.parse(response.output_parsed);
-    const critiques: CritiqueOutput[] = [];
-
-    for (const c of parsed.critiques) {
-      critiques.push({
-        model: this.modelName,
-        targetModel: c.targetModel,
-        critique: c.critique,
-        risks: c.risks || [],
-        conflicts: c.conflicts || [],
-        phaseId: `critique-${this.modelName}-${c.targetModel}`,
-        timeMs: 0, // Will be set by orchestrator
+      const response = await this.client.responses.parse({
+        model: 'gpt-5-nano',
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        text: {
+          format: zodTextFormat(TradingDecisionSchema, "trading_decision")
+        }
       });
-    }
 
-    return critiques;
+      const decision = TradingDecisionSchema.parse(response.output_parsed);
+
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Council OpenAI proposal missing actions');
+      }
+
+      if (!decision.plan?.trim()) {
+        throw new Error('Council OpenAI proposal missing plan');
+      }
+
+      await savePlan(this.agentName, decision.plan);
+
+      const primaryAction = decision.actions[0];
+      return {
+        ...decision,
+        rawText: JSON.stringify(decision.actions),
+        model: this.modelName,
+        phaseId: `proposal-${this.modelName}`,
+        planSnapshot: previousPlan?.plan ?? decision.plan,
+        normalizedAction: normalizeActionType(primaryAction.type),
+        quantity: primaryAction.quantity || 0,
+        asset: primaryAction.asset || marketData.symbol,
+      };
+    }, this.modelName);
   }
 
-  async generateRevision(
-    originalProposal: NormalizedDecision,
-    receivedCritiques: Array<{ model: ModelName; critique: string; risks: string[]; conflicts: string[] }>,
-    marketData: MarketIntelligence
-  ): Promise<NormalizedDecision> {
-    const ctx = buildPromptContext(marketData);
+  async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
+    return withRetry(async () => {
+      const ctx = buildPromptContext({} as MarketIntelligence); // Empty context for voting
+      const systemPrompt = getVoteSystemPrompt(this.modelName);
+      const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-    const plan = await loadPlan(this.agentName).catch(() => null);
+      const response = await this.client.responses.parse({
+        model: 'gpt-5-nano',
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        text: {
+          format: zodTextFormat(VoteSchema, "vote_response")
+        }
+      });
 
-    const agentConfig = getAgentConfig('council');
-    if (!agentConfig) {
-      throw new Error('Council agent configuration not found');
-    }
+      const parsed = VoteSchema.parse(response.output_parsed);
 
-    const openOrders = await getOpenOrders(
-      marketData.symbol,
-      agentConfig.binanceApiKey,
-      agentConfig.binanceSecretKey
-    ).catch(() => marketData.openOrders ?? []);
-
-    const promptConfig: PromptConfig = {
-      tone: 'analytical',
-      maxPositionPct: 0.20,
-      minOrderUSD: 10,
-      decisionInterval: '4 hours',
-      dailyOrderCap: 10
-    };
-
-    const { systemPrompt, userPrompt } = await buildTradingPromptWithPlan(
-      this.agentName,
-      marketData,
-      promptConfig,
-      0,
-      {
-        symbol: marketData.symbol,
-        binanceApiKey: agentConfig.binanceApiKey,
-        binanceSecretKey: agentConfig.binanceSecretKey,
-        openOrdersOverride: openOrders,
-        planOverride: plan
-          ? {
-              text: plan.plan,
-              lastUpdated: plan.lastUpdated
-            }
-          : null
+      // Validate that all 5 ranks are present and unique
+      const ranks = parsed.rankings.map(r => r.rank);
+      const uniqueRanks = new Set(ranks);
+      if (uniqueRanks.size !== 5 || ranks.length !== 5) {
+        throw new Error(`OpenAI vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
       }
-    );
 
-    const response = await this.client.responses.parse({
-      model: this.modelName,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: getRevisionUserPrompt(originalProposal, receivedCritiques, {
-          previousPlan: plan?.plan ?? null,
-          openOrders: openOrders.length ? openOrders.map(order => `${order.side} ${order.quantity} @ $${order.price}`).join('\n') : null,
-          exposureLine: `Current Exposure: $${calculateExposure(openOrders, marketData.ticker.lastPrice, marketData.balances).toFixed(2)}`
-        }) }
-      ],
-      text: {
-        format: zodTextFormat(TradingDecisionSchema, "trading_decision")
-      }
-    });
-
-    const decision = TradingDecisionSchema.parse(response.output_parsed);
-
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council OpenAI revision missing actions');
-    }
-
-    if (!decision.plan?.trim()) {
-      throw new Error('Council OpenAI revision missing plan');
-    }
-
-    await savePlan(this.agentName, decision.plan);
-
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `revision-${this.modelName}`,
-      planSnapshot: decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
-  }
-
-  async generateVote(revisedProposals: NormalizedDecision[]): Promise<VoteOutput> {
-    const systemPrompt = getVoteSystemPrompt(this.modelName);
-    const userPrompt = getVoteUserPrompt(revisedProposals, this.modelName);
-
-    const response = await this.client.responses.parse({
-      model: this.modelName,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      text: {
-        format: zodTextFormat(VoteSchema, "vote_response")
-      }
-    });
-
-    const parsed = VoteSchema.parse(response.output_parsed);
-
-    return {
-      model: this.modelName,
-      rankings: parsed.rankings.map((r: any) => ({
-        rank: r.rank as 1 | 2,
-        targetModel: r.targetModel,
-        justification: r.justification,
-      })),
-      phaseId: `vote-${this.modelName}`,
-      timeMs: 0,
-    };
+      return {
+        model: this.modelName,
+        rankings: parsed.rankings.map((r: any) => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          targetModel: r.targetModel,
+          justification: r.justification,
+        })),
+        phaseId: `vote-${this.modelName}`,
+        timeMs: 0,
+      };
+    }, this.modelName);
   }
 }
 
@@ -406,7 +304,7 @@ export class OpenAIAdapter {
 
 export class GrokAdapter {
   private client: OpenAI;
-  private modelName: ModelName = 'grok-4-fast';
+  private modelName: ModelName = 'Grok';
 
   constructor() {
     this.client = new OpenAI({
@@ -415,252 +313,135 @@ export class GrokAdapter {
     });
   }
 
-  async generateProposal(marketData: MarketIntelligence): Promise<NormalizedDecision> {
-    const ctx = buildPromptContext(marketData);
-    const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
-    const userPrompt = getProposalUserPrompt(ctx);
+  async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
+    return withRetry(async () => {
+      const ctx = buildPromptContext(marketData);
+      const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
+      const userPrompt = getProposalUserPrompt(ctx);
 
-    const completion = await this.client.chat.completions.create({
-      model: "grok-4-fast",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "trading_decision",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              actions: {
-                type: "array",
-                minItems: 1,
-                items: {
-                  type: "object",
-                  properties: {
-                    type: {
-                      type: "string",
-                      enum: [
-                        "PLACE_LIMIT_BUY",
-                        "PLACE_LIMIT_SELL",
-                        "PLACE_MARKET_BUY",
-                        "PLACE_MARKET_SELL",
-                        "CANCEL_ORDER",
-                        "HOLD"
-                      ]
+      const completion = await this.client.chat.completions.create({
+        model: "grok-4-fast",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "trading_decision",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: {
+                        type: "string",
+                        enum: [
+                          "PLACE_LIMIT_BUY",
+                          "PLACE_LIMIT_SELL",
+                          "PLACE_MARKET_BUY",
+                          "PLACE_MARKET_SELL",
+                          "CANCEL_ORDER",
+                          "HOLD"
+                        ]
+                      },
+                      orderId: { type: "string" },
+                      price: { type: "number" },
+                      quantity: { type: "number" },
+                      asset: { type: "string" },
+                      reasoning: { type: "string" }
                     },
-                    orderId: { type: "string" },
-                    price: { type: "number" },
-                    quantity: { type: "number" },
-                    asset: { type: "string" },
-                    reasoning: { type: "string" }
-                  },
-                  required: ["type", "reasoning"],
-                  additionalProperties: false
+                    required: ["type", "reasoning"],
+                    additionalProperties: false
+                  }
+                },
+                plan: {
+                  type: "string"
+                },
+                reasoning: {
+                  type: "string"
                 }
               },
-              plan: {
-                type: "string"
-              },
-              reasoning: {
-                type: "string"
-              }
-            },
-            required: ["actions", "plan", "reasoning"],
-            additionalProperties: false
+              required: ["actions", "plan", "reasoning"],
+              additionalProperties: false
+            }
           }
-        }
-      },
-      temperature: 0.4,
-    });
-
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Grok');
-
-    const parsed = JSON.parse(content);
-    const decision = TradingDecisionSchema.parse(parsed);
-
-    // Validate the new schema structure
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council Grok proposal missing actions array');
-    }
-
-    if (!decision.plan?.trim()) {
-      throw new Error('Council Grok proposal missing plan');
-    }
-
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `proposal-${this.modelName}`,
-      planSnapshot: decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
-  }
-
-  async generateCritique(proposals: NormalizedDecision[]): Promise<CritiqueOutput[]> {
-    const systemPrompt = getCritiqueSystemPrompt(this.modelName);
-    const userPrompt = getCritiqueUserPrompt(proposals, this.modelName);
-
-    const completion = await this.client.chat.completions.create({
-      model: "grok-4-fast",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 600,
-    });
-
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Grok');
-
-    const parsed = JSON.parse(content);
-    const critiques: CritiqueOutput[] = [];
-
-    for (const c of parsed.critiques) {
-      critiques.push({
-        model: this.modelName,
-        targetModel: c.targetModel,
-        critique: c.critique,
-        risks: c.risks || [],
-        conflicts: c.conflicts || [],
-        phaseId: `critique-${this.modelName}-${c.targetModel}`,
-        timeMs: 0,
+        },
+        temperature: 0.0, // Deterministic
       });
-    }
 
-    return critiques;
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Grok');
+
+      const parsed = JSON.parse(content);
+      const decision = TradingDecisionSchema.parse(parsed);
+
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Council Grok proposal missing actions array');
+      }
+
+      if (!decision.plan?.trim()) {
+        throw new Error('Council Grok proposal missing plan');
+      }
+
+      const primaryAction = decision.actions[0];
+      return {
+        ...decision,
+        rawText: JSON.stringify(decision.actions),
+        model: this.modelName,
+        phaseId: `proposal-${this.modelName}`,
+        planSnapshot: decision.plan,
+        normalizedAction: normalizeActionType(primaryAction.type),
+        quantity: primaryAction.quantity || 0,
+        asset: primaryAction.asset || marketData.symbol,
+      };
+    }, this.modelName);
   }
 
-  async generateRevision(
-    originalProposal: NormalizedDecision,
-    receivedCritiques: Array<{ model: ModelName; critique: string; risks: string[]; conflicts: string[] }>,
-    marketData: MarketIntelligence
-  ): Promise<NormalizedDecision> {
-    const ctx = buildPromptContext(marketData);
-    const systemPrompt = getRevisionSystemPrompt(ctx, this.modelName);
-    const userPrompt = getRevisionUserPrompt(originalProposal, receivedCritiques);
+  async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
+    return withRetry(async () => {
+      const systemPrompt = getVoteSystemPrompt(this.modelName);
+      const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-    const completion = await this.client.chat.completions.create({
-      model: "grok-4-fast",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "trading_decision",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              actions: {
-                type: "array",
-                minItems: 1,
-                items: {
-                  type: "object",
-                  properties: {
-                    type: {
-                      type: "string",
-                      enum: [
-                        "PLACE_LIMIT_BUY",
-                        "PLACE_LIMIT_SELL",
-                        "PLACE_MARKET_BUY",
-                        "PLACE_MARKET_SELL",
-                        "CANCEL_ORDER",
-                        "HOLD"
-                      ]
-                    },
-                    orderId: { type: "string" },
-                    price: { type: "number" },
-                    quantity: { type: "number" },
-                    asset: { type: "string" },
-                    reasoning: { type: "string" }
-                  },
-                  required: ["type", "reasoning"],
-                  additionalProperties: false
-                }
-              },
-              plan: {
-                type: "string"
-              },
-              reasoning: {
-                type: "string"
-              }
-            },
-            required: ["actions", "plan", "reasoning"],
-            additionalProperties: false
-          }
-        }
-      },
-      temperature: 0.3,
-    });
+      const completion = await this.client.chat.completions.create({
+        model: "grok-4-fast",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.0, // Deterministic
+        max_tokens: 800,
+      });
 
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Grok');
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Grok');
 
-    const parsed = JSON.parse(content);
-    const decision = TradingDecisionSchema.parse(parsed);
+      const parsed = JSON.parse(content);
 
-    // Validate the new schema structure
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council Grok revision missing actions array');
-    }
+      // Validate that all 5 ranks are present and unique
+      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const uniqueRanks = new Set(ranks);
+      if (uniqueRanks.size !== 5 || ranks.length !== 5) {
+        throw new Error(`Grok vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
+      }
 
-    if (!decision.plan?.trim()) {
-      throw new Error('Council Grok revision missing plan');
-    }
-
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `revision-${this.modelName}`,
-      planSnapshot: decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
-  }
-
-  async generateVote(revisedProposals: NormalizedDecision[]): Promise<VoteOutput> {
-    const systemPrompt = getVoteSystemPrompt(this.modelName);
-    const userPrompt = getVoteUserPrompt(revisedProposals, this.modelName);
-
-    const completion = await this.client.chat.completions.create({
-      model: "grok-4-fast",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 400,
-    });
-
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Grok');
-
-    const parsed = JSON.parse(content);
-
-    return {
-      model: this.modelName,
-      rankings: parsed.rankings.map((r: any) => ({
-        rank: r.rank as 1 | 2,
-        targetModel: r.targetModel,
-        justification: r.justification,
-      })),
-      phaseId: `vote-${this.modelName}`,
-      timeMs: 0,
-    };
+      return {
+        model: this.modelName,
+        rankings: parsed.rankings.map((r: any) => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          targetModel: r.targetModel,
+          justification: r.justification,
+        })),
+        phaseId: `vote-${this.modelName}`,
+        timeMs: 0,
+      };
+    }, this.modelName);
   }
 }
 
@@ -670,7 +451,7 @@ export class GrokAdapter {
 
 export class GeminiAdapter {
   private client: OpenAI;
-  private modelName: ModelName = 'google/gemini-2.5-flash';
+  private modelName: ModelName = 'Gemini';
   private agentName = 'council-gemini';
 
   constructor() {
@@ -684,347 +465,486 @@ export class GeminiAdapter {
     });
   }
 
-  async generateProposal(marketData: MarketIntelligence): Promise<NormalizedDecision> {
-    const ctx = buildPromptContext(marketData);
-    const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
-    const userPrompt = getProposalUserPrompt(ctx);
+  async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
+    return withRetry(async () => {
+      const ctx = buildPromptContext(marketData);
+      const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
+      const userPrompt = getProposalUserPrompt(ctx);
 
-    const completion = await this.client.chat.completions.create({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "trading_decision",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              actions: {
-                type: "array",
-                minItems: 1,
-                items: {
-                  oneOf: [
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["CANCEL_ORDER"] },
-                        orderId: { type: "string" },
-                        asset: { type: "string" },
-                        reasoning: { type: "string" }
+      const completion = await this.client.chat.completions.create({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "trading_decision",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    oneOf: [
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["CANCEL_ORDER"] },
+                          orderId: { type: "string" },
+                          asset: { type: "string" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "orderId", "asset", "reasoning"],
+                        additionalProperties: false
                       },
-                      required: ["type", "orderId", "asset", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_LIMIT_BUY"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        price: { type: "number" },
-                        reasoning: { type: "string" }
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_LIMIT_BUY"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          price: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "price", "reasoning"],
+                        additionalProperties: false
                       },
-                      required: ["type", "asset", "quantity", "price", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_LIMIT_SELL"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        price: { type: "number" },
-                        reasoning: { type: "string" }
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_LIMIT_SELL"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          price: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "price", "reasoning"],
+                        additionalProperties: false
                       },
-                      required: ["type", "asset", "quantity", "price", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_MARKET_BUY"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        reasoning: { type: "string" }
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_MARKET_BUY"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "reasoning"],
+                        additionalProperties: false
                       },
-                      required: ["type", "asset", "quantity", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_MARKET_SELL"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        reasoning: { type: "string" }
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["PLACE_MARKET_SELL"] },
+                          asset: { type: "string" },
+                          quantity: { type: "number" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "asset", "quantity", "reasoning"],
+                        additionalProperties: false
                       },
-                      required: ["type", "asset", "quantity", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["HOLD"] },
-                        asset: { type: "string" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "reasoning"],
-                      additionalProperties: false
-                    }
-                  ]
+                      {
+                        type: "object",
+                        properties: {
+                          type: { type: "string", enum: ["HOLD"] },
+                          asset: { type: "string" },
+                          reasoning: { type: "string" }
+                        },
+                        required: ["type", "reasoning"],
+                        additionalProperties: false
+                      }
+                    ]
+                  }
+                },
+                plan: {
+                  type: "string"
+                },
+                reasoning: {
+                  type: "string"
                 }
               },
-              plan: {
-                type: "string"
-              },
-              reasoning: {
-                type: "string"
-              }
-            },
-            required: ["actions", "plan", "reasoning"],
-            additionalProperties: false
+              required: ["actions", "plan", "reasoning"],
+              additionalProperties: false
+            }
           }
-        }
-      },
-      temperature: 0.4,
-    });
-
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Gemini');
-
-    const parsed = JSON.parse(content);
-    const decision = TradingDecisionSchema.parse(parsed);
-
-    // Validate the new schema structure
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council Gemini proposal missing actions array');
-    }
-
-    if (!decision.plan?.trim()) {
-      throw new Error('Council Gemini proposal missing plan');
-    }
-
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `proposal-${this.modelName}`,
-      planSnapshot: decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
-  }
-
-  async generateCritique(proposals: NormalizedDecision[]): Promise<CritiqueOutput[]> {
-    const systemPrompt = getCritiqueSystemPrompt(this.modelName);
-    const userPrompt = getCritiqueUserPrompt(proposals, this.modelName);
-
-    const completion = await this.client.chat.completions.create({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 600,
-    });
-
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Gemini');
-
-    const parsed = JSON.parse(content);
-    const critiques: CritiqueOutput[] = [];
-
-    for (const c of parsed.critiques) {
-      critiques.push({
-        model: this.modelName,
-        targetModel: c.targetModel,
-        critique: c.critique,
-        risks: c.risks || [],
-        conflicts: c.conflicts || [],
-        phaseId: `critique-${this.modelName}-${c.targetModel}`,
-        timeMs: 0,
+        },
+        temperature: 0.0, // Deterministic
       });
-    }
 
-    return critiques;
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Gemini');
+
+      const parsed = JSON.parse(content);
+      const decision = TradingDecisionSchema.parse(parsed);
+
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Council Gemini proposal missing actions array');
+      }
+
+      if (!decision.plan?.trim()) {
+        throw new Error('Council Gemini proposal missing plan');
+      }
+
+      const primaryAction = decision.actions[0];
+      return {
+        ...decision,
+        rawText: JSON.stringify(decision.actions),
+        model: this.modelName,
+        phaseId: `proposal-${this.modelName}`,
+        planSnapshot: decision.plan,
+        normalizedAction: normalizeActionType(primaryAction.type),
+        quantity: primaryAction.quantity || 0,
+        asset: primaryAction.asset || marketData.symbol,
+      };
+    }, this.modelName);
   }
 
-  async generateRevision(
-    originalProposal: NormalizedDecision,
-    receivedCritiques: Array<{ model: ModelName; critique: string; risks: string[]; conflicts: string[] }>,
-    marketData: MarketIntelligence
-  ): Promise<NormalizedDecision> {
-    const ctx = buildPromptContext(marketData);
-    const systemPrompt = getRevisionSystemPrompt(ctx, this.modelName);
-    const userPrompt = getRevisionUserPrompt(originalProposal, receivedCritiques);
+  async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
+    return withRetry(async () => {
+      const systemPrompt = getVoteSystemPrompt(this.modelName);
+      const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-    const completion = await this.client.chat.completions.create({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "trading_decision",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              actions: {
-                type: "array",
-                minItems: 1,
-                items: {
-                  oneOf: [
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["CANCEL_ORDER"] },
-                        orderId: { type: "string" },
-                        asset: { type: "string" },
-                        reasoning: { type: "string" }
+      const completion = await this.client.chat.completions.create({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.0, // Deterministic
+        max_tokens: 800,
+      });
+
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Gemini');
+
+      const parsed = JSON.parse(content);
+
+      // Validate that all 5 ranks are present and unique
+      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const uniqueRanks = new Set(ranks);
+      if (uniqueRanks.size !== 5 || ranks.length !== 5) {
+        throw new Error(`Gemini vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
+      }
+
+      return {
+        model: this.modelName,
+        rankings: parsed.rankings.map((r: any) => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          targetModel: r.targetModel,
+          justification: r.justification,
+        })),
+        phaseId: `vote-${this.modelName}`,
+        timeMs: 0,
+      };
+    }, this.modelName);
+  }
+}
+
+// ============================================================================
+// KIMI ADAPTER
+// ============================================================================
+
+export class KimiAdapter {
+  private client: OpenAI;
+  private modelName: ModelName = 'Kimi';
+  private agentName = 'council-kimi';
+
+  constructor() {
+    this.client = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      defaultHeaders: {
+        "HTTP-Referer": "https://tradewarriors.dev",
+        "X-Title": "TradeWarriors",
+      },
+    });
+  }
+
+  async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
+    return withRetry(async () => {
+      const ctx = buildPromptContext(marketData);
+      const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
+      const userPrompt = getProposalUserPrompt(ctx);
+
+      const completion = await this.client.chat.completions.create({
+        model: "moonshotai/kimi-k2-thinking",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "trading_decision",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: {
+                        type: "string",
+                        enum: [
+                          "PLACE_LIMIT_BUY",
+                          "PLACE_LIMIT_SELL",
+                          "PLACE_MARKET_BUY",
+                          "PLACE_MARKET_SELL",
+                          "CANCEL_ORDER",
+                          "HOLD"
+                        ]
                       },
-                      required: ["type", "orderId", "asset", "reasoning"],
-                      additionalProperties: false
+                      orderId: { type: "string" },
+                      price: { type: "number" },
+                      quantity: { type: "number" },
+                      asset: { type: "string" },
+                      reasoning: { type: "string" }
                     },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_LIMIT_BUY"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        price: { type: "number" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "asset", "quantity", "price", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_LIMIT_SELL"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        price: { type: "number" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "asset", "quantity", "price", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_MARKET_BUY"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "asset", "quantity", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["PLACE_MARKET_SELL"] },
-                        asset: { type: "string" },
-                        quantity: { type: "number" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "asset", "quantity", "reasoning"],
-                      additionalProperties: false
-                    },
-                    {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["HOLD"] },
-                        asset: { type: "string" },
-                        reasoning: { type: "string" }
-                      },
-                      required: ["type", "reasoning"],
-                      additionalProperties: false
-                    }
-                  ]
+                    required: ["type", "reasoning"],
+                    additionalProperties: false
+                  }
+                },
+                plan: {
+                  type: "string"
+                },
+                reasoning: {
+                  type: "string"
                 }
               },
-              plan: {
-                type: "string"
-              },
-              reasoning: {
-                type: "string"
-              }
-            },
-            required: ["actions", "plan", "reasoning"],
-            additionalProperties: false
+              required: ["actions", "plan", "reasoning"],
+              additionalProperties: false
+            }
           }
-        }
-      },
-      temperature: 0.3,
-    });
+        },
+        temperature: 0.0, // Deterministic
+      });
 
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Gemini');
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Kimi');
 
-    const parsed = JSON.parse(content);
-    const decision = TradingDecisionSchema.parse(parsed);
+      const parsed = JSON.parse(content);
+      const decision = TradingDecisionSchema.parse(parsed);
 
-    // Validate the new schema structure
-    if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-      throw new Error('Council Gemini revision missing actions array');
-    }
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Council Kimi proposal missing actions array');
+      }
 
-    if (!decision.plan?.trim()) {
-      throw new Error('Council Gemini revision missing plan');
-    }
+      if (!decision.plan?.trim()) {
+        throw new Error('Council Kimi proposal missing plan');
+      }
 
-    const primaryAction = decision.actions[0];
-    return {
-      ...decision,
-      rawText: JSON.stringify(decision.actions),
-      model: this.modelName,
-      phaseId: `revision-${this.modelName}`,
-      planSnapshot: decision.plan,
-      normalizedAction: normalizeActionType(primaryAction.type),
-      quantity: primaryAction.quantity || 0,
-    };
+      const primaryAction = decision.actions[0];
+      return {
+        ...decision,
+        rawText: JSON.stringify(decision.actions),
+        model: this.modelName,
+        phaseId: `proposal-${this.modelName}`,
+        planSnapshot: decision.plan,
+        normalizedAction: normalizeActionType(primaryAction.type),
+        quantity: primaryAction.quantity || 0,
+        asset: primaryAction.asset || marketData.symbol,
+      };
+    }, this.modelName);
   }
 
-  async generateVote(revisedProposals: NormalizedDecision[]): Promise<VoteOutput> {
-    const systemPrompt = getVoteSystemPrompt(this.modelName);
-    const userPrompt = getVoteUserPrompt(revisedProposals, this.modelName);
+  async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
+    return withRetry(async () => {
+      const systemPrompt = getVoteSystemPrompt(this.modelName);
+      const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-    const completion = await this.client.chat.completions.create({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 400,
+      const completion = await this.client.chat.completions.create({
+        model: "moonshotai/kimi-k2-thinking",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.0, // Deterministic
+        max_tokens: 800,
+      });
+
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from Kimi');
+
+      const parsed = JSON.parse(content);
+
+      // Validate that all 5 ranks are present and unique
+      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const uniqueRanks = new Set(ranks);
+      if (uniqueRanks.size !== 5 || ranks.length !== 5) {
+        throw new Error(`Kimi vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
+      }
+
+      return {
+        model: this.modelName,
+        rankings: parsed.rankings.map((r: any) => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          targetModel: r.targetModel,
+          justification: r.justification,
+        })),
+        phaseId: `vote-${this.modelName}`,
+        timeMs: 0,
+      };
+    }, this.modelName);
+  }
+}
+
+// ============================================================================
+// DEEPSEEK ADAPTER
+// ============================================================================
+
+export class DeepSeekAdapter {
+  private client: OpenAI;
+  private modelName: ModelName = 'DeepSeek';
+  private agentName = 'council-deepseek';
+
+  constructor() {
+    this.client = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      defaultHeaders: {
+        "HTTP-Referer": "https://tradewarriors.dev",
+        "X-Title": "TradeWarriors",
+      },
     });
+  }
 
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty response from Gemini');
+  async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
+    return withRetry(async () => {
+      const ctx = buildPromptContext(marketData);
+      const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
+      const userPrompt = getProposalUserPrompt(ctx);
 
-    const parsed = JSON.parse(content);
+      const completion = await this.client.chat.completions.create({
+        model: "deepseek/deepseek-chat-v3-0324",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "trading_decision",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: {
+                        type: "string",
+                        enum: [
+                          "PLACE_LIMIT_BUY",
+                          "PLACE_LIMIT_SELL",
+                          "PLACE_MARKET_BUY",
+                          "PLACE_MARKET_SELL",
+                          "CANCEL_ORDER",
+                          "HOLD"
+                        ]
+                      },
+                      orderId: { type: "string" },
+                      price: { type: "number" },
+                      quantity: { type: "number" },
+                      asset: { type: "string" },
+                      reasoning: { type: "string" }
+                    },
+                    required: ["type", "reasoning"],
+                    additionalProperties: false
+                  }
+                },
+                plan: {
+                  type: "string"
+                },
+                reasoning: {
+                  type: "string"
+                }
+              },
+              required: ["actions", "plan", "reasoning"],
+              additionalProperties: false
+            }
+          }
+        },
+        temperature: 0.0, // Deterministic
+      });
 
-    return {
-      model: this.modelName,
-      rankings: parsed.rankings.map((r: any) => ({
-        rank: r.rank as 1 | 2,
-        targetModel: r.targetModel,
-        justification: r.justification,
-      })),
-      phaseId: `vote-${this.modelName}`,
-      timeMs: 0,
-    };
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from DeepSeek');
+
+      const parsed = JSON.parse(content);
+      const decision = TradingDecisionSchema.parse(parsed);
+
+      if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
+        throw new Error('Council DeepSeek proposal missing actions array');
+      }
+
+      if (!decision.plan?.trim()) {
+        throw new Error('Council DeepSeek proposal missing plan');
+      }
+
+      const primaryAction = decision.actions[0];
+      return {
+        ...decision,
+        rawText: JSON.stringify(decision.actions),
+        model: this.modelName,
+        phaseId: `proposal-${this.modelName}`,
+        planSnapshot: decision.plan,
+        normalizedAction: normalizeActionType(primaryAction.type),
+        quantity: primaryAction.quantity || 0,
+        asset: primaryAction.asset || marketData.symbol,
+      };
+    }, this.modelName);
+  }
+
+  async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
+    return withRetry(async () => {
+      const systemPrompt = getVoteSystemPrompt(this.modelName);
+      const userPrompt = getVoteUserPrompt(proposals, this.modelName);
+
+      const completion = await this.client.chat.completions.create({
+        model: "deepseek/deepseek-chat-v3-0324",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.0, // Deterministic
+        max_tokens: 800,
+      });
+
+      const content = completion.choices[0].message.content;
+      if (!content) throw new Error('Empty response from DeepSeek');
+
+      const parsed = JSON.parse(content);
+
+      // Validate that all 5 ranks are present and unique
+      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const uniqueRanks = new Set(ranks);
+      if (uniqueRanks.size !== 5 || ranks.length !== 5) {
+        throw new Error(`DeepSeek vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
+      }
+
+      return {
+        model: this.modelName,
+        rankings: parsed.rankings.map((r: any) => ({
+          rank: r.rank as 1 | 2 | 3 | 4 | 5,
+          targetModel: r.targetModel,
+          justification: r.justification,
+        })),
+        phaseId: `vote-${this.modelName}`,
+        timeMs: 0,
+      };
+    }, this.modelName);
   }
 }
