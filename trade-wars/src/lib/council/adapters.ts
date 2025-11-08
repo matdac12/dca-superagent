@@ -1,24 +1,24 @@
 /**
- * Real LLM adapters for 2-Phase Council Debate system
+ * Unified LLM adapters for 2-Phase Council Debate system
+ *
+ * ALL 5 models use OpenRouter + Vercel AI SDK for consistency:
+ * - OpenAI (openai/gpt-5-mini)
+ * - Grok (x-ai/grok-4-fast)
+ * - Gemini (google/gemini-2.5-flash)
+ * - Kimi (moonshotai/kimi-k2-thinking)
+ * - DeepSeek (deepseek/deepseek-chat-v3-0324)
  *
  * Each adapter implements 2 debate phases:
- * 1. Proposal - initial trading decision
- * 2. Vote - rank ALL 5 proposals (1-5 points)
+ * 1. Proposal - initial trading decision (ProposalSchema)
+ * 2. Vote - rank ALL 5 proposals 1-5 (VoteSchema)
  *
  * Temperature: 0.0 (deterministic decisions)
- * Models: OpenAI, Grok, Gemini, Kimi, DeepSeek
+ * Architecture: OpenRouter + Vercel AI SDK generateObject() + Zod validation
  */
 
-import OpenAI from 'openai';
-import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
-import { TradingDecisionSchema } from '@/types/trading';
-import { buildTradingPromptWithPlan, PromptConfig } from '@/lib/prompts/tradingPromptBuilder';
-import { loadPlan, savePlan } from '@/lib/storage/agentPlans';
-import { getOpenOrders } from '@/lib/binance/openOrders';
-import { getAgentConfig } from '@/config/agents';
 import {
   ModelName,
   NormalizedDecision,
@@ -139,26 +139,9 @@ async function withRetry<T>(
 }
 
 // ============================================================================
-// ZOD SCHEMAS FOR RESPONSES API
-// OpenAI Structured Outputs requirements:
-// - No .optional() (use .nullable() instead or make required)
-// - No .superRefine() or custom validation
-// - All fields must be explicitly typed
+// ZOD SCHEMAS FOR VERCEL AI SDK
+// Used by all 5 models via OpenRouter + generateObject()
 // ============================================================================
-
-// OpenAI-compatible proposal schema (no .optional(), no .superRefine())
-const OpenAIProposalSchema = z.object({
-  actions: z.array(z.object({
-    type: z.enum(['PLACE_LIMIT_BUY', 'PLACE_LIMIT_SELL', 'PLACE_MARKET_BUY', 'PLACE_MARKET_SELL', 'CANCEL_ORDER', 'HOLD']),
-    orderId: z.string().nullable(),
-    price: z.number().nullable(),
-    quantity: z.number().nullable(),
-    asset: z.string().nullable(),
-    reasoning: z.string(),
-  })).min(1),
-  plan: z.string(),
-  reasoning: z.string(),
-});
 
 const VoteSchema = z.object({
   rankings: z.array(z.object({
@@ -188,91 +171,43 @@ const ProposalSchema = z.object({
 // ============================================================================
 
 export class OpenAIAdapter {
-  private client: OpenAI;
+  private openrouter: ReturnType<typeof createOpenAI>;
   private modelName: ModelName = 'OpenAI';
   private agentName = 'council-openai';
 
   constructor() {
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+    this.openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: process.env.OPENROUTER_API_KEY,
+      headers: {
+        'HTTP-Referer': 'https://tradewarriors.dev',
+        'X-Title': 'TradeWarriors',
+      },
     });
-  }
-
-  private async buildPrompts(marketData: MarketIntelligence) {
-    const ctx = buildPromptContext(marketData);
-    const agentConfig = getAgentConfig('council');
-    if (!agentConfig) {
-      throw new Error('Council agent configuration not found');
-    }
-
-    const previousPlan = await loadPlan(this.agentName).catch(error => {
-      console.warn(`Failed to load plan for ${this.agentName}:`, error);
-      return null;
-    });
-
-    // Fetch open orders for both BTC and ADA
-    const [btcOrders, adaOrders] = await Promise.all([
-      getOpenOrders('BTCUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => []),
-      getOpenOrders('ADAUSDT', agentConfig.binanceApiKey, agentConfig.binanceSecretKey).catch(() => [])
-    ]);
-    const openOrders = [...btcOrders, ...adaOrders];
-
-    const promptConfig: PromptConfig = {
-      tone: 'analytical',
-      maxPositionPct: 0.20,
-      minOrderUSD: 10,
-      decisionInterval: '4 hours',
-      dailyOrderCap: 10
-    };
-
-    const { systemPrompt, userPrompt } = await buildTradingPromptWithPlan(
-      this.agentName,
-      marketData,
-      promptConfig,
-      0,
-      {
-        symbol: marketData.symbol,
-        binanceApiKey: agentConfig.binanceApiKey,
-        binanceSecretKey: agentConfig.binanceSecretKey,
-        openOrdersOverride: openOrders,
-        planOverride: previousPlan
-          ? {
-              text: previousPlan.plan,
-              lastUpdated: previousPlan.lastUpdated
-            }
-          : marketData.plan ?? null
-      }
-    );
-
-    return { systemPrompt, userPrompt, openOrders, previousPlan };
   }
 
   async propose(marketData: MarketIntelligence): Promise<NormalizedDecision> {
     return withRetry(async () => {
-      const { systemPrompt, userPrompt, previousPlan } = await this.buildPrompts(marketData);
+      const ctx = buildPromptContext(marketData);
+      const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
+      const userPrompt = getProposalUserPrompt(ctx);
 
-      const response = await this.client.responses.parse({
-        model: 'gpt-5-nano',
-        input: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        text: {
-          format: zodTextFormat(OpenAIProposalSchema, "trading_decision")
-        }
+      const result = await generateObject({
+        model: this.openrouter('openai/gpt-5-mini'),
+        schema: ProposalSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const decision = OpenAIProposalSchema.parse(response.output_parsed);
+      const decision = result.object;
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
-        throw new Error('Council OpenAI proposal missing actions');
+        throw new Error('Council OpenAI proposal missing actions array');
       }
 
       if (!decision.plan?.trim()) {
         throw new Error('Council OpenAI proposal missing plan');
       }
-
-      await savePlan(this.agentName, decision.plan);
 
       const primaryAction = decision.actions[0];
       return {
@@ -280,7 +215,7 @@ export class OpenAIAdapter {
         rawText: JSON.stringify(decision.actions),
         model: this.modelName,
         phaseId: `proposal-${this.modelName}`,
-        planSnapshot: previousPlan?.plan ?? decision.plan,
+        planSnapshot: decision.plan,
         normalizedAction: normalizeActionType(primaryAction.type),
         quantity: primaryAction.quantity || 0,
         asset: primaryAction.asset || marketData.symbol,
@@ -293,21 +228,17 @@ export class OpenAIAdapter {
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-      const response = await this.client.responses.parse({
-        model: 'gpt-5-nano',
-        input: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        text: {
-          format: zodTextFormat(VoteSchema, "vote_response")
-        }
+      const result = await generateObject({
+        model: this.openrouter('openai/gpt-5-mini'),
+        schema: VoteSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const parsed = VoteSchema.parse(response.output_parsed);
+      const vote = result.object;
 
       // Validate that all 5 ranks are present and unique
-      const ranks = parsed.rankings.map(r => r.rank);
+      const ranks = vote.rankings.map(r => r.rank);
       const uniqueRanks = new Set(ranks);
       if (uniqueRanks.size !== 5 || ranks.length !== 5) {
         throw new Error(`OpenAI vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
@@ -315,11 +246,7 @@ export class OpenAIAdapter {
 
       return {
         model: this.modelName,
-        rankings: parsed.rankings.map((r: any) => ({
-          rank: r.rank as 1 | 2 | 3 | 4 | 5,
-          targetModel: r.targetModel,
-          justification: r.justification,
-        })),
+        rankings: vote.rankings,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
