@@ -40,59 +40,59 @@ function buildPromptContext(marketData: MarketIntelligence): PromptContext {
   const btcBalance = marketData.balances.find(b => b.asset === 'BTC')?.total || 0;
   const adaBalance = marketData.balances.find(b => b.asset === 'ADA')?.total || 0;
 
-  // Handle dual-asset market intelligence format (btc.ticker) or legacy single-asset format (ticker)
-  const currentPrice = marketData.btc?.ticker?.lastPrice || marketData.ticker?.lastPrice || 0;
-  const portfolioValueUSD = usdtBalance + (btcBalance * currentPrice);
+  // Handle dual-asset market intelligence format (btc.ticker, ada.ticker)
+  const btcTicker = marketData.btc?.ticker || marketData.ticker || {};
+  const adaTicker = marketData.ada?.ticker || {};
+
+  const btcPrice = btcTicker.lastPrice || 0;
+  const adaPrice = adaTicker.lastPrice || 0;
+
+  const portfolioValueUSD = usdtBalance + (btcBalance * btcPrice) + (adaBalance * adaPrice);
 
   const MIN_ORDER_VALUE_USD = 10;
-  const maxBuyUSDT = Math.min(usdtBalance * 0.995, portfolioValueUSD * 0.50);
-  const maxSellBTC = Math.min(btcBalance * 0.995, (portfolioValueUSD * 0.50) / currentPrice);
-  const maxSellValueUSD = maxSellBTC * currentPrice;
 
-  // Handle dual-asset format (btc.klines) or legacy single-asset format (klines)
-  const recentKlines = marketData.btc?.klines || marketData.klines || [];
-  const priceRangeHigh = recentKlines.length > 0 ? Math.max(...recentKlines.map(k => k.high)) : currentPrice;
-  const priceRangeLow = recentKlines.length > 0 ? Math.min(...recentKlines.map(k => k.low)) : currentPrice;
-  const priceRangeAvg = recentKlines.length > 0 ? recentKlines.reduce((sum, k) => sum + k.close, 0) / recentKlines.length : currentPrice;
-
+  // Trade history
   const tradeHistoryEntries = marketData.tradeHistory?.entries || [];
   const tradeHistorySummary = marketData.tradeHistory?.summary || 'No trade history';
-  const indicatorsFormatted = marketData.btc?.indicators?.formatted || marketData.indicators?.formatted || 'No indicators available';
-  const orderBookData = marketData.btc?.orderBook || marketData.orderBook;
-  const orderBookSummary = orderBookData?.summary ?? 'Order book data unavailable.';
-  const orderBookBids = orderBookData?.formatted?.bids?.slice(0, 10) || ['No order book bids available.'];
-  const orderBookAsks = orderBookData?.formatted?.asks?.slice(0, 10) || ['No order book asks available.'];
+
+  // BTC indicators and order book
+  const btcIndicators = marketData.btc?.indicators?.formatted || marketData.indicators?.formatted || 'No indicators available';
+  const btcOrderBookData = marketData.btc?.orderBook || marketData.orderBook;
+  const btcOrderBook = btcOrderBookData?.summary ?? 'Order book data unavailable.';
+
+  // ADA indicators and order book
+  const adaIndicators = marketData.ada?.indicators?.formatted || 'No ADA indicators available';
+  const adaOrderBookData = marketData.ada?.orderBook;
+  const adaOrderBook = adaOrderBookData?.summary ?? 'Order book data unavailable.';
 
   const marketNewsFormatted = marketData.marketNews?.formatted ?? null;
-
-  const ticker = marketData.btc?.ticker || marketData.ticker || {};
 
   return {
     usdtBalance,
     btcBalance,
-    adaBalance, // Added for dual-asset support
-    currentPrice,
+    adaBalance,
+    btcPrice,
+    adaPrice,
     portfolioValueUSD,
-    maxBuyUSDT,
-    maxSellBTC,
-    maxSellValueUSD,
     MIN_ORDER_VALUE_USD,
-    priceChangePercent: ticker.priceChangePercent || 0,
-    high24h: ticker.highPrice || 0,
-    low24h: ticker.lowPrice || 0,
-    volume24h: ticker.volume || 0,
-    quoteVolume24h: ticker.quoteVolume || 0,
-    priceRangeHigh,
-    priceRangeLow,
-    priceRangeAvg,
+    btcPriceChangePercent: btcTicker.priceChangePercent || 0,
+    adaPriceChangePercent: adaTicker.priceChangePercent || 0,
     tradeHistoryEntries,
     tradeHistorySummary,
-    indicatorsFormatted,
-    orderBookSummary,
-    orderBookBids,
-    orderBookAsks,
+    btcIndicators,
+    adaIndicators,
+    btcOrderBook,
+    adaOrderBook,
     marketNewsFormatted,
   };
+}
+
+/**
+ * Strip markdown code blocks from LLM responses (e.g., ```json\n{...}\n```)
+ */
+function stripMarkdownCodeBlocks(text: string): string {
+  // Remove ```json and ``` markers
+  return text.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
 }
 
 /**
@@ -261,7 +261,6 @@ export class OpenAIAdapter {
 
   async vote(proposals: NormalizedDecision[]): Promise<VoteOutput> {
     return withRetry(async () => {
-      const ctx = buildPromptContext({} as MarketIntelligence); // Empty context for voting
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
@@ -623,7 +622,8 @@ export class GeminiAdapter {
       const content = completion.choices[0].message.content;
       if (!content) throw new Error('Empty response from Gemini');
 
-      const parsed = JSON.parse(content);
+      const cleanedContent = stripMarkdownCodeBlocks(content);
+      const parsed = JSON.parse(cleanedContent);
 
       // Validate that all 5 ranks are present and unique
       const ranks = parsed.rankings.map((r: any) => r.rank);
@@ -775,7 +775,8 @@ export class KimiAdapter {
       const content = completion.choices[0].message.content;
       if (!content) throw new Error('Empty response from Kimi');
 
-      const parsed = JSON.parse(content);
+      const cleanedContent = stripMarkdownCodeBlocks(content);
+      const parsed = JSON.parse(cleanedContent);
 
       // Validate that all 5 ranks are present and unique
       const ranks = parsed.rankings.map((r: any) => r.rank);
@@ -927,7 +928,8 @@ export class DeepSeekAdapter {
       const content = completion.choices[0].message.content;
       if (!content) throw new Error('Empty response from DeepSeek');
 
-      const parsed = JSON.parse(content);
+      const cleanedContent = stripMarkdownCodeBlocks(content);
+      const parsed = JSON.parse(cleanedContent);
 
       // Validate that all 5 ranks are present and unique
       const ranks = parsed.rankings.map((r: any) => r.rank);

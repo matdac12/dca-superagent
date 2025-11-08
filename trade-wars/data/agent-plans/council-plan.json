@@ -1,5 +1,5 @@
 {
   "agentName": "council",
-  "plan": "[NONE] Only 0 models responded successfully. Minimum 3 required for council decision.",
-  "lastUpdated": "2025-11-08T08:17:19.387Z"
+  "plan": "[NONE] Only 2 models voted successfully. Minimum 3 required for council decision.",
+  "lastUpdated": "2025-11-08T08:24:31.604Z"
 }
