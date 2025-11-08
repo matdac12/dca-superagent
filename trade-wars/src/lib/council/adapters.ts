@@ -310,17 +310,22 @@ export class OpenAIAdapter {
 }
 
 // ============================================================================
-// GROK ADAPTER
+// GROK ADAPTER (OpenRouter + Vercel AI SDK)
 // ============================================================================
 
 export class GrokAdapter {
-  private client: OpenAI;
+  private openrouter: ReturnType<typeof createOpenAI>;
   private modelName: ModelName = 'Grok';
+  private agentName = 'council-grok';
 
   constructor() {
-    this.client = new OpenAI({
-      baseURL: "https://api.x.ai/v1",
-      apiKey: process.env.GROK_API_KEY,
+    this.openrouter = createOpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: process.env.OPENROUTER_API_KEY,
+      headers: {
+        'HTTP-Referer': 'https://tradewarriors.dev',
+        'X-Title': 'TradeWarriors',
+      },
     });
   }
 
@@ -330,67 +335,14 @@ export class GrokAdapter {
       const systemPrompt = getProposalSystemPrompt(ctx, this.modelName);
       const userPrompt = getProposalUserPrompt(ctx);
 
-      const completion = await this.client.chat.completions.create({
-        model: "grok-4-fast",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "trading_decision",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  minItems: 1,
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: [
-                          "PLACE_LIMIT_BUY",
-                          "PLACE_LIMIT_SELL",
-                          "PLACE_MARKET_BUY",
-                          "PLACE_MARKET_SELL",
-                          "CANCEL_ORDER",
-                          "HOLD"
-                        ]
-                      },
-                      orderId: { type: "string" },
-                      price: { type: "number" },
-                      quantity: { type: "number" },
-                      asset: { type: "string" },
-                      reasoning: { type: "string" }
-                    },
-                    required: ["type", "reasoning"],
-                    additionalProperties: false
-                  }
-                },
-                plan: {
-                  type: "string"
-                },
-                reasoning: {
-                  type: "string"
-                }
-              },
-              required: ["actions", "plan", "reasoning"],
-              additionalProperties: false
-            }
-          }
-        },
-        temperature: 0.0, // Deterministic
+      const result = await generateObject({
+        model: this.openrouter('x-ai/grok-4-fast'),
+        schema: ProposalSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Grok');
-
-      const parsed = JSON.parse(content);
-      const decision = TradingDecisionSchema.parse(parsed);
+      const decision = result.object;
 
       if (!decision || !Array.isArray(decision.actions) || decision.actions.length === 0) {
         throw new Error('Council Grok proposal missing actions array');
@@ -419,24 +371,17 @@ export class GrokAdapter {
       const systemPrompt = getVoteSystemPrompt(this.modelName);
       const userPrompt = getVoteUserPrompt(proposals, this.modelName);
 
-      const completion = await this.client.chat.completions.create({
-        model: "grok-4-fast",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.0, // Deterministic
-        max_tokens: 800,
+      const result = await generateObject({
+        model: this.openrouter('x-ai/grok-4-fast'),
+        schema: VoteSchema,
+        prompt: `${systemPrompt}\n\n${userPrompt}`,
+        temperature: 0.0,
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) throw new Error('Empty response from Grok');
-
-      const parsed = JSON.parse(content);
+      const vote = result.object;
 
       // Validate that all 5 ranks are present and unique
-      const ranks = parsed.rankings.map((r: any) => r.rank);
+      const ranks = vote.rankings.map(r => r.rank);
       const uniqueRanks = new Set(ranks);
       if (uniqueRanks.size !== 5 || ranks.length !== 5) {
         throw new Error(`Grok vote must include exactly 5 unique ranks (1-5), got: ${ranks.join(', ')}`);
@@ -444,11 +389,7 @@ export class GrokAdapter {
 
       return {
         model: this.modelName,
-        rankings: parsed.rankings.map((r: any) => ({
-          rank: r.rank as 1 | 2 | 3 | 4 | 5,
-          targetModel: r.targetModel,
-          justification: r.justification,
-        })),
+        rankings: vote.rankings,
         phaseId: `vote-${this.modelName}`,
         timeMs: 0,
       };
