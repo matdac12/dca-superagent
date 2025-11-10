@@ -13,23 +13,23 @@ config({ path: '.env.local' });
 const AGENTS = [
   {
     name: 'openai',
-    apiKey: process.env.BINANCE_OPENAI_API_KEY,
-    secretKey: process.env.BINANCE_OPENAI_SECRET_KEY,
+    apiKey: process.env.BINANCE_API_KEY,
+    secretKey: process.env.BINANCE_SECRET_KEY,
   },
   {
     name: 'grok',
-    apiKey: process.env.BINANCE_GROK_API_KEY,
-    secretKey: process.env.BINANCE_GROK_SECRET_KEY,
+    apiKey: process.env.BINANCE_API_KEY,
+    secretKey: process.env.BINANCE_SECRET_KEY,
   },
   {
     name: 'gemini',
-    apiKey: process.env.BINANCE_GEMINI_API_KEY,
-    secretKey: process.env.BINANCE_GEMINI_SECRET_KEY,
+    apiKey: process.env.BINANCE_API_KEY,
+    secretKey: process.env.BINANCE_SECRET_KEY,
   },
   {
     name: 'council',
-    apiKey: process.env.BINANCE_COUNCIL_API_KEY,
-    secretKey: process.env.BINANCE_COUNCIL_SECRET_KEY,
+    apiKey: process.env.BINANCE_API_KEY,
+    secretKey: process.env.BINANCE_SECRET_KEY,
   },
 ];
 

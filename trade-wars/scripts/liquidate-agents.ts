@@ -17,26 +17,26 @@ const agents: AgentConfig[] = [
   {
     name: 'openai',
     displayName: 'OpenAI Agent',
-    apiKey: process.env.BINANCE_OPENAI_API_KEY || '',
-    secretKey: process.env.BINANCE_OPENAI_SECRET_KEY || ''
+    apiKey: process.env.BINANCE_API_KEY || '',
+    secretKey: process.env.BINANCE_SECRET_KEY || ''
   },
   {
     name: 'grok',
     displayName: 'Grok Agent',
-    apiKey: process.env.BINANCE_GROK_API_KEY || '',
-    secretKey: process.env.BINANCE_GROK_SECRET_KEY || ''
+    apiKey: process.env.BINANCE_API_KEY || '',
+    secretKey: process.env.BINANCE_SECRET_KEY || ''
   },
   {
     name: 'gemini',
     displayName: 'Gemini Agent',
-    apiKey: process.env.BINANCE_GEMINI_API_KEY || '',
-    secretKey: process.env.BINANCE_GEMINI_SECRET_KEY || ''
+    apiKey: process.env.BINANCE_API_KEY || '',
+    secretKey: process.env.BINANCE_SECRET_KEY || ''
   },
   {
     name: 'council',
     displayName: 'Council Agent',
-    apiKey: process.env.BINANCE_COUNCIL_API_KEY || '',
-    secretKey: process.env.BINANCE_COUNCIL_SECRET_KEY || ''
+    apiKey: process.env.BINANCE_API_KEY || '',
+    secretKey: process.env.BINANCE_SECRET_KEY || ''
   }
 ];
 

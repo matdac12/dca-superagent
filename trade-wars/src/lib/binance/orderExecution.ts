@@ -3,9 +3,8 @@ import { Balance, TradingDecision } from '@/types/trading';
 
 // Initialize Binance client
 function getBinanceClient(apiKey?: string, secretKey?: string) {
-  // Use provided keys if available, otherwise fall back to default OpenAI keys for backward compatibility
-  const key = apiKey || process.env.BINANCE_OPENAI_API_KEY || process.env.BINANCE_API_KEY;
-  const secret = secretKey || process.env.BINANCE_OPENAI_SECRET_KEY || process.env.BINANCE_SECRET_KEY;
+  const key = apiKey || process.env.BINANCE_API_KEY;
+  const secret = secretKey || process.env.BINANCE_SECRET_KEY;
 
   return new Spot(
     key,

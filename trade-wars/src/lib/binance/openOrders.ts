@@ -4,8 +4,8 @@ import { OpenOrder } from '@/types/trading';
 const BINANCE_TESTNET_URL = 'https://testnet.binance.vision';
 
 export function createBinanceClient(apiKey?: string, secretKey?: string) {
-  const key = apiKey || process.env.BINANCE_OPENAI_API_KEY || process.env.BINANCE_API_KEY;
-  const secret = secretKey || process.env.BINANCE_OPENAI_SECRET_KEY || process.env.BINANCE_SECRET_KEY;
+  const key = apiKey || process.env.BINANCE_API_KEY;
+  const secret = secretKey || process.env.BINANCE_SECRET_KEY;
 
   return new Spot(key, secret, { baseURL: BINANCE_TESTNET_URL });
 }

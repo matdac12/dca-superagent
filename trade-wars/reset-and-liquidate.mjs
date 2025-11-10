@@ -20,8 +20,8 @@ dotenv.config({ path: path.join(__dirname, '.env.local') });
 
 // Binance client setup
 const client = new Spot(
-  process.env.BINANCE_OPENAI_API_KEY || process.env.BINANCE_API_KEY,
-  process.env.BINANCE_OPENAI_SECRET_KEY || process.env.BINANCE_SECRET_KEY,
+  process.env.BINANCE_API_KEY,
+  process.env.BINANCE_SECRET_KEY,
   { baseURL: 'https://testnet.binance.vision' }
 );
 
