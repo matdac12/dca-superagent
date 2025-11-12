@@ -53,8 +53,8 @@ class AgentConfig:
     """Configuration for agent behavior"""
 
     # Research configuration
-    MIN_RESEARCH_QUERIES = 5
-    MAX_RESEARCH_QUERIES = 5
+    MIN_RESEARCH_QUERIES = 3  # Minimum queries (stay focused)
+    MAX_RESEARCH_QUERIES = 8  # Maximum queries (don't exaggerate)
     RESEARCH_SUMMARY_MAX_WORDS = 200
 
     # Strategy configuration

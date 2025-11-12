@@ -1,7 +1,7 @@
 """
 Planner Agent - Generates specialized research queries for DCA accumulation
 
-Uses GPT-5 to strategically plan exactly 5 web searches across these categories:
+Uses GPT-5 to strategically plan 3-8 focused web searches across these categories:
 - On-chain metrics
 - Ecosystem health
 - Macro catalysts
@@ -27,9 +27,9 @@ INVESTMENT PHILOSOPHY:
 - Strategy: Patient capital deployment with data-driven timing
 - Only accumulate (never sell except for critical black swan events)
 
-QUERY CATEGORIES (generate exactly 5 queries, one from each category):
+QUERY CATEGORIES (generate 3-8 queries total, prioritize most relevant categories):
 
-1. **ON-CHAIN METRICS** (1 query):
+1. **ON-CHAIN METRICS**:
    - BTC whale movements, exchange flows, MVRV ratio
    - Network activity, transaction volumes, miner behavior
    - Examples:
@@ -37,7 +37,7 @@ QUERY CATEGORIES (generate exactly 5 queries, one from each category):
      * "BTC exchange netflows institutional buying"
      * "MVRV ratio Bitcoin current level"
 
-2. **ECOSYSTEM HEALTH** (1 query):
+2. **ECOSYSTEM HEALTH**:
    - ADA staking participation, protocol updates, TVL changes
    - Development activity, governance proposals
    - Examples:
@@ -45,7 +45,7 @@ QUERY CATEGORIES (generate exactly 5 queries, one from each category):
      * "ADA total value locked DeFi"
      * "Hydra scaling solution launch date"
 
-3. **MACRO CATALYSTS** (1 query):
+3. **MACRO CATALYSTS**:
    - Federal Reserve policy, inflation data, USD strength
    - Institutional adoption, regulatory developments
    - Examples:
@@ -53,7 +53,7 @@ QUERY CATEGORIES (generate exactly 5 queries, one from each category):
      * "Bitcoin ETF inflows January 2025"
      * "crypto regulation latest news"
 
-4. **TECHNICAL SETUPS** (1 query):
+4. **TECHNICAL SETUPS**:
    - Price action, support/resistance levels, momentum
    - RSI extremes, volume patterns, volatility
    - Examples:
@@ -61,13 +61,19 @@ QUERY CATEGORIES (generate exactly 5 queries, one from each category):
      * "ADA price technical analysis support"
      * "crypto market volatility index"
 
-5. **SENTIMENT INDICATORS** (1 query):
+5. **SENTIMENT INDICATORS**:
    - Fear & Greed Index, funding rates, social sentiment
    - Retail vs institutional positioning
    - Examples:
      * "crypto Fear and Greed Index today"
      * "Bitcoin funding rates negative"
      * "crypto Twitter sentiment analysis"
+
+CATEGORY GUIDELINES:
+✓ Try to cover at least 3 different categories when relevant
+✓ Allocate queries based on current market conditions (e.g., if RSI is extreme, more technical/sentiment queries)
+✓ You don't need one from each category - prioritize what matters most TODAY
+✓ Stay focused and brief - don't exaggerate the number of queries
 
 QUERY QUALITY GUIDELINES:
 ✓ Focus on RECENT data (last 24-72 hours when possible)
@@ -119,16 +125,23 @@ EXAMPLE OUTPUT STRUCTURE:
       "priority": 1,
       "category": "sentiment"
     }},
-    // ... 3 more queries (one from each remaining category)
+    {{
+      "query": "Bitcoin whale accumulation last 72 hours",
+      "reason": "Check if smart money is buying this dip",
+      "priority": 2,
+      "category": "on-chain"
+    }}
+    // ... add 0-5 more queries as needed (3-8 total)
   ],
   "strategy_hint": "Market appears to be in mild oversold territory with RSI at 28 and recent 15% pullback. Expect to find fear-driven selling and potential whale accumulation. Will research if this is capitulation or just normal correction."
 }}
 
 IMPORTANT:
-- Always generate EXACTLY {AgentConfig.MIN_RESEARCH_QUERIES} queries (no more, no less)
-- Generate ONE query from EACH of the 5 categories
+- Generate BETWEEN {AgentConfig.MIN_RESEARCH_QUERIES}-{AgentConfig.MAX_RESEARCH_QUERIES} queries (quality over quantity)
+- Cover at least 3 different categories when relevant
 - Focus on RECENCY - 72-hour data is gold
-- Be strategic - each query should serve the accumulation decision
+- Be strategic - each query should serve TODAY's accumulation decision
+- Stay brief - don't generate queries just to hit a number
 """
 
     return Agent(
@@ -148,7 +161,7 @@ async def plan_research(market_context: MarketContext) -> DCAResearchPlan:
         market_context: Current market data, portfolio state, indicators
 
     Returns:
-        DCAResearchPlan with exactly 5 specialized search queries (one per category)
+        DCAResearchPlan with 3-8 specialized search queries
     """
     from agents import Runner
 
@@ -213,6 +226,6 @@ Total Open Orders: {len(context.open_orders)}
     if context.previous_plan:
         prompt += f"\n\n=== PREVIOUS STRATEGIC PLAN ===\n{context.previous_plan}"
 
-    prompt += "\n\nTASK: Generate exactly 5 specialized web search queries (one from each category) to gather intelligence for today's accumulation decision."
+    prompt += "\n\nTASK: Generate 3-8 focused web search queries to gather intelligence for today's accumulation decision. Prioritize quality and relevance over hitting a specific count."
 
     return prompt
