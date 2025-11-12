@@ -82,16 +82,22 @@ class SimpleMarketExecutor:
 
             # Calculate quantity to buy
             # Get symbol info for precision
-            from binance.spot import Spot
-            client = Spot(
+            from binance.client import Client
+            client = Client(
                 api_key=config.BINANCE_API_KEY,
                 api_secret=config.BINANCE_SECRET_KEY,
-                base_url='https://testnet.binance.vision' if config.BINANCE_TESTNET else 'https://api.binance.com'
+                testnet=config.BINANCE_TESTNET
             )
 
             # Get symbol filters
-            exchange_info = client.exchange_info(symbol=asset)
-            symbol_info = exchange_info['symbols'][0]
+            exchange_info = client.get_exchange_info()
+            symbol_info = next(
+                (s for s in exchange_info['symbols'] if s['symbol'] == asset),
+                None
+            )
+
+            if not symbol_info:
+                raise ValueError(f"Symbol {asset} not found in exchange info")
 
             # Find LOT_SIZE filter for quantity precision
             lot_size_filter = next(
@@ -101,22 +107,31 @@ class SimpleMarketExecutor:
 
             if lot_size_filter:
                 step_size = float(lot_size_filter['stepSize'])
-                precision = int(round(-1 * (step_size.bit_length() - 1) / 3.32193)) if step_size < 1 else 0
+                min_qty = float(lot_size_filter['minQty'])
+
+                # Calculate precision from step_size (count decimal places)
+                step_str = f"{step_size:.10f}".rstrip('0')
+                if '.' in step_str:
+                    precision = len(step_str.split('.')[1])
+                else:
+                    precision = 0
             else:
                 precision = 8  # Default
+                min_qty = 0.00000001
 
             # Calculate quantity
-            quantity = usd_amount / current_price
-            # Round to correct precision
-            quantity = round(quantity, precision)
+            raw_quantity = usd_amount / current_price
+            quantity = round(raw_quantity, precision)
 
-            print(f"   Price: ${current_price:.8f}, Quantity: {quantity:.8f} (precision: {precision})")
+            # Ensure it meets minimum
+            if quantity < min_qty:
+                quantity = min_qty
+
+            print(f"   Price: €{current_price:.8f}, Quantity: {quantity:.8f} (precision: {precision})")
 
             # Place market order
-            order_response = client.new_order(
+            order_response = client.order_market_buy(
                 symbol=asset,
-                side='BUY',
-                type='MARKET',
                 quantity=quantity
             )
 

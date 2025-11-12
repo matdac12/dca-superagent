@@ -30,9 +30,10 @@ MODEL = "gpt-5-nano"  # Fast, cheap, proven in existing system
 # ============================================================================
 
 # Balance thresholds
-MIN_EUR_THRESHOLD = 10.0  # Skip if balance < €10 EUR
-MIN_ORDER_SIZE = 10.0     # Binance minimum order size
-FEE_CUSHION = 5.0        # Always leave €5 for fees
+MIN_EUR_THRESHOLD = 10.0       # Skip if balance < €10 EUR
+MIN_DEPLOYABLE_AMOUNT = 10.0   # Skip if deployable amount < €10 (don't even call AI)
+MIN_ORDER_SIZE = 10.0          # Binance minimum order size
+FEE_CUSHION = 5.0              # Always leave €5 for fees
 
 # Assets to trade
 ASSETS = {
@@ -53,10 +54,12 @@ def calculate_deployment_amount(eur_balance: float) -> float:
     """
     Calculate deployment amount based on balance.
 
-    Strategy:
-    - Small balances (€10-100): Deploy up to 50% (need minimum €10 orders)
-    - Medium balances (€100-500): Deploy up to 35%
-    - Large balances (€500+): Deploy up to 20%
+    Strategy (conservative - deploy LESS as balance grows):
+    - €10-20: Deploy 95% (small amount, use most with small fee cushion)
+    - €20-50: Deploy 50% (medium amount, deploy half)
+    - €50-100: Deploy 35% (larger amount, more conservative)
+    - €100-500: Deploy 25% (even more conservative)
+    - €500+: Deploy 20% (very conservative)
 
     Args:
         eur_balance: Current EUR balance
@@ -65,33 +68,32 @@ def calculate_deployment_amount(eur_balance: float) -> float:
         Maximum EUR amount to deploy this session
 
     Examples:
+        >>> calculate_deployment_amount(10.43)
+        9.91  # 95% of €10.43
+
         >>> calculate_deployment_amount(30)
         15.0  # 50% of €30
 
-        >>> calculate_deployment_amount(200)
-        70.0  # 35% of €200
-
-        >>> calculate_deployment_amount(1000)
-        200.0  # 20% of €1000
+        >>> calculate_deployment_amount(100)
+        25.0  # 25% of €100
     """
     if eur_balance < MIN_EUR_THRESHOLD:
         return 0.0
 
-    # Determine percentage based on balance tier
-    if eur_balance <= 100:
-        percentage = 0.50  # 50% for small balances
+    # Determine percentage based on balance tier (decreases as balance grows)
+    if eur_balance < 20:
+        percentage = 0.95  # 95% (small fee cushion)
+    elif eur_balance < 50:
+        percentage = 0.50  # 50%
+    elif eur_balance < 100:
+        percentage = 0.35  # 35%
     elif eur_balance <= 500:
-        percentage = 0.35  # 35% for medium balances
+        percentage = 0.25  # 25%
     else:
-        percentage = 0.20  # 20% for large balances
+        percentage = 0.20  # 20%
 
     # Calculate deployment amount
-    deploy = eur_balance * percentage
-
-    # Always leave cushion for fees and rounding
-    max_deploy = eur_balance - FEE_CUSHION
-
-    return min(deploy, max(0, max_deploy))
+    return eur_balance * percentage
 
 
 def get_deployment_percentage(eur_balance: float) -> float:
@@ -106,12 +108,16 @@ def get_deployment_percentage(eur_balance: float) -> float:
     """
     if eur_balance < MIN_EUR_THRESHOLD:
         return 0.0
-    elif eur_balance <= 100:
-        return 0.50
+    elif eur_balance < 20:
+        return 0.95  # 95%
+    elif eur_balance < 50:
+        return 0.50  # 50%
+    elif eur_balance < 100:
+        return 0.35  # 35%
     elif eur_balance <= 500:
-        return 0.35
+        return 0.25  # 25%
     else:
-        return 0.20
+        return 0.20  # 20%
 
 
 # ============================================================================
@@ -203,10 +209,12 @@ def print_config():
     print(f"  Min EUR: €{MIN_EUR_THRESHOLD}")
     print(f"  Min Order: €{MIN_ORDER_SIZE}")
     print(f"  Fee Cushion: €{FEE_CUSHION}")
-    print(f"\nDeployment Strategy:")
-    print(f"  €0-100:    50% deployment")
-    print(f"  €100-500:  35% deployment")
-    print(f"  €500+:     20% deployment")
+    print(f"\nDeployment Strategy (% decreases as balance grows):")
+    print(f"  €10-20:     95% deployment")
+    print(f"  €20-50:     50% deployment")
+    print(f"  €50-100:    35% deployment")
+    print(f"  €100-500:   25% deployment")
+    print(f"  €500+:      20% deployment")
     print(f"\nSafety Limits:")
     print(f"  Max Orders/Run: {MAX_ORDERS_PER_RUN}")
     print(f"  Max Exposure: {MAX_EXPOSURE_PCT}%")

@@ -16,14 +16,19 @@ load_dotenv(env_path, override=True)  # override=True ensures our .env takes pre
 # Import our local config FIRST (before adding other paths to sys.path)
 import config
 
+# Ensure local directory is checked first for imports (for our EUR-modified binance_integration)
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
 # Add parent directory to path for imports from existing system
 parent_dir = Path(__file__).parent.parent
 openai_agents_dir = parent_dir / "openai-agents-dca"
-sys.path.insert(0, str(openai_agents_dir))
+sys.path.insert(1, str(openai_agents_dir))  # Insert at position 1, after current dir
 
-from binance_integration import BinanceMarketData
-from safety_validator import SafetyValidator
-from telegram_notifier import TelegramNotifier
+# Import local binance_integration (EUR support), but other modules from parent
+from binance_integration import BinanceMarketData  # Local EUR version
+from safety_validator import SafetyValidator  # From parent
+from telegram_notifier import TelegramNotifier  # From parent
 from schemas import SimpleDCADecision, DCASession, SessionType, ExecutionResult
 from decision_agent import get_decision
 from market_orders import SimpleMarketExecutor
@@ -106,6 +111,37 @@ async def run_dca_session() -> DCASession:
                     btc_amount=0.0,
                     ada_amount=0.0,
                     reasoning=f"Balance €{eur_balance:.2f} below minimum €{config.MIN_EUR_THRESHOLD}",
+                    confidence=5
+                ),
+                remaining_balance=eur_balance
+            )
+
+            send_notification(session)
+            save_execution_log(session)
+            return session
+
+        # Check if deployable amount is too low for €10-20 tier (BEFORE calling AI)
+        # Only check this for small balances to avoid wasting AI calls
+        if eur_balance < 20 and max_deploy < config.MIN_ORDER_SIZE:
+            log_warning(f"Deployable amount €{max_deploy:.2f} < minimum order size €{config.MIN_ORDER_SIZE}")
+            print(f"   ⏭️  Skipping session - deployable amount too small for orders\n")
+
+            # Create SKIP session
+            session = DCASession(
+                timestamp=timestamp,
+                session_type=SessionType.SKIP,
+                eur_balance=eur_balance,
+                max_deploy=max_deploy,
+                deployment_percentage=deployment_pct,
+                btc_price=0.0,
+                ada_price=0.0,
+                btc_rsi=0.0,
+                ada_rsi=0.0,
+                fear_greed=50,
+                decision=SimpleDCADecision(
+                    btc_amount=0.0,
+                    ada_amount=0.0,
+                    reasoning=f"Deployable amount €{max_deploy:.2f} below minimum order size €{config.MIN_ORDER_SIZE}",
                     confidence=5
                 ),
                 remaining_balance=eur_balance
