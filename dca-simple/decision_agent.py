@@ -16,7 +16,7 @@ def create_decision_agent(intelligence: Dict[str, Any], max_deploy: float) -> Ag
 
     Args:
         intelligence: Complete market intelligence from BinanceMarketData
-        max_deploy: Maximum USD allowed to deploy this session
+        max_deploy: Maximum EUR allowed to deploy this session
 
     Returns:
         Agent configured for DCA decision making
@@ -38,35 +38,35 @@ INVESTMENT PHILOSOPHY:
 - Only accumulate (never sell except for critical black swan events)
 
 CONSTRAINTS:
-- Maximum to deploy TODAY: ${max_deploy:.2f} USD
-- Minimum order size: ${config.MIN_ORDER_SIZE:.2f} USD per asset
+- Maximum to deploy TODAY: €{max_deploy:.2f} EUR
+- Minimum order size: €{config.MIN_ORDER_SIZE:.2f} EUR per asset
 - Assets available: BTC, ADA
 - You can allocate to one, both, or neither (HOLD)
 
 CURRENT MARKET DATA ({intelligence['timestamp']}):
 
 BITCOIN (BTC):
-- Current Price: ${btc['price']:,.2f}
+- Current Price: €{btc['price']:,.2f}
 - 24h Change: {btc['change_24h']:+.2f}%
 - RSI(14): {btc['indicators']['rsi']:.1f} {format_rsi_emoji(btc['indicators']['rsi'])}
-- Bollinger Bands: ${btc['indicators']['bb_lower']:,.2f} / ${btc['indicators']['bb_middle']:,.2f} / ${btc['indicators']['bb_upper']:,.2f}
+- Bollinger Bands: €{btc['indicators']['bb_lower']:,.2f} / €{btc['indicators']['bb_middle']:,.2f} / €{btc['indicators']['bb_upper']:,.2f}
 - 24h Volume: ${btc['volume_24h']:,.0f}
 
 CARDANO (ADA):
-- Current Price: ${ada['price']:.4f}
+- Current Price: €{ada['price']:.4f}
 - 24h Change: {ada['change_24h']:+.2f}%
 - RSI(14): {ada['indicators']['rsi']:.1f} {format_rsi_emoji(ada['indicators']['rsi'])}
-- Bollinger Bands: ${ada['indicators']['bb_lower']:.4f} / ${ada['indicators']['bb_middle']:.4f} / ${ada['indicators']['bb_upper']:.4f}
+- Bollinger Bands: €{ada['indicators']['bb_lower']:.4f} / €{ada['indicators']['bb_middle']:.4f} / €{ada['indicators']['bb_upper']:.4f}
 - 24h Volume: ${ada['volume_24h']:,.0f}
 
 MARKET SENTIMENT:
 - Fear & Greed Index: {fear_greed}/100 ({fg_label})
 
 CURRENT PORTFOLIO:
-- Total Value: ${portfolio['total_value_usd']:,.2f}
-- USDT Available: ${portfolio['usdt']['free']:,.2f}
-- BTC Holdings: {portfolio['btc']['free']:.8f} BTC (${portfolio['btc']['value_usd']:,.2f})
-- ADA Holdings: {portfolio['ada']['free']:.2f} ADA (${portfolio['ada']['value_usd']:,.2f})
+- Total Value: €{portfolio['total_value_usd']:,.2f}
+- EUR Available: €{portfolio['eur']['free']:,.2f}
+- BTC Holdings: {portfolio['btc']['free']:.8f} BTC (€{portfolio['btc']['value_usd']:,.2f})
+- ADA Holdings: {portfolio['ada']['free']:.2f} ADA (€{portfolio['ada']['value_usd']:,.2f})
 
 DECISION GUIDELINES:
 
@@ -85,7 +85,7 @@ Sentiment Analysis:
 - Fear & Greed > 75 = Extreme Greed (HOLD, wait for pullback)
 
 Allocation Strategy:
-- You can deploy LESS than ${max_deploy:.2f} if conditions aren't ideal
+- You can deploy LESS than €{max_deploy:.2f} if conditions aren't ideal
 - You can HOLD entirely (btc_amount=0, ada_amount=0) if both assets are overbought
 - Prefer BTC for large allocations (more established)
 - Consider ADA when it shows relative strength or better value
@@ -93,8 +93,8 @@ Allocation Strategy:
 
 YOUR TASK:
 Analyze the market data above and decide:
-1. How much USD to deploy for Bitcoin (0 if skipping)
-2. How much USD to deploy for Cardano (0 if skipping)
+1. How much EUR to deploy for Bitcoin (0 if skipping)
+2. How much EUR to deploy for Cardano (0 if skipping)
 3. Clear reasoning for your decision (be specific about RSI, sentiment, price action)
 4. Your confidence level (1=low uncertainty, 5=high conviction)
 

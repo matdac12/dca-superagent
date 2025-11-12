@@ -35,8 +35,8 @@ class SimpleMarketExecutor:
         Execute a market buy order.
 
         Args:
-            asset: Trading pair (e.g., 'BTCUSDT', 'ADAUSDT')
-            usd_amount: USD amount to spend
+            asset: Trading pair (e.g., 'BTCEUR', 'ADAEUR')
+            usd_amount: EUR amount to spend
 
         Returns:
             ExecutionResult with order details
@@ -44,10 +44,10 @@ class SimpleMarketExecutor:
         Raises:
             Exception: If order execution fails
         """
-        print(f"🔄 Executing market buy: ${usd_amount:.2f} {asset}")
+        print(f"🔄 Executing market buy: €{usd_amount:.2f} {asset}")
 
         if config.DRY_RUN:
-            print(f"   🧪 [DRY RUN] Would buy ${usd_amount:.2f} {asset}")
+            print(f"   🧪 [DRY RUN] Would buy €{usd_amount:.2f} {asset}")
             return ExecutionResult(
                 success=True,
                 asset=asset,
@@ -65,8 +65,8 @@ class SimpleMarketExecutor:
             action = Action(
                 type=ActionType.PLACE_MARKET_BUY,
                 asset=asset,
-                quantity=usd_amount,  # Field named 'quantity' but holds USD amount
-                reasoning=f"Market buy ${usd_amount:.2f}"
+                quantity=usd_amount,  # Field named 'quantity' but holds EUR amount
+                reasoning=f"Market buy €{usd_amount:.2f}"
             )
 
             # Execute using existing BinanceExecutor
@@ -75,15 +75,10 @@ class SimpleMarketExecutor:
             # use the Binance client directly
 
             from binance_integration import BinanceMarketData
-            binance_data = BinanceMarketData()
+            binance_data = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
-            # Get current price for the asset
-            if asset == "BTCUSDT":
-                current_price = binance_data.get_ticker_24h(asset)['price']
-            elif asset == "ADAUSDT":
-                current_price = binance_data.get_ticker_24h(asset)['price']
-            else:
-                raise ValueError(f"Unsupported asset: {asset}")
+            # Get current price for the asset (works for any pair)
+            current_price = binance_data.get_ticker_24h(asset)['price']
 
             # Calculate quantity to buy
             # Get symbol info for precision
@@ -216,7 +211,7 @@ def execute_simple_dca(btc_amount: float, ada_amount: float) -> list[ExecutionRe
     if btc_amount >= config.MIN_ORDER_SIZE:
         actions.append(Action(
             type=ActionType.PLACE_MARKET_BUY,
-            asset="BTCUSDT",
+            asset=config.ASSETS["BTC"],
             quantity=btc_amount,
             reasoning="DCA BTC buy"
         ))
@@ -224,7 +219,7 @@ def execute_simple_dca(btc_amount: float, ada_amount: float) -> list[ExecutionRe
     if ada_amount >= config.MIN_ORDER_SIZE:
         actions.append(Action(
             type=ActionType.PLACE_MARKET_BUY,
-            asset="ADAUSDT",
+            asset=config.ASSETS["ADA"],
             quantity=ada_amount,
             reasoning="DCA ADA buy"
         ))
@@ -251,7 +246,7 @@ if __name__ == "__main__":
     # Test individual order
     print("1. Test individual market buy:")
     executor = SimpleMarketExecutor()
-    result = executor.execute_market_buy("BTCUSDT", 100.0)
+    result = executor.execute_market_buy(config.ASSETS["BTC"], 100.0)
     print(f"   {result}\n")
 
     # Test multiple orders

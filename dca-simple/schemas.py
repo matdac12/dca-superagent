@@ -14,16 +14,16 @@ class SimpleDCADecision(BaseModel):
     """
     Output from the single AI decision agent.
 
-    The agent decides how much USD to allocate to each asset based on
+    The agent decides how much EUR to allocate to each asset based on
     market conditions, balance constraints, and long-term DCA strategy.
     """
     btc_amount: float = Field(
         ge=0.0,
-        description="USD amount to deploy for Bitcoin (0 = skip BTC today)"
+        description="EUR amount to deploy for Bitcoin (0 = skip BTC today)"
     )
     ada_amount: float = Field(
         ge=0.0,
-        description="USD amount to deploy for Cardano (0 = skip ADA today)"
+        description="EUR amount to deploy for Cardano (0 = skip ADA today)"
     )
     reasoning: str = Field(
         min_length=20,
@@ -38,7 +38,7 @@ class SimpleDCADecision(BaseModel):
 
     @property
     def total_amount(self) -> float:
-        """Total USD being deployed"""
+        """Total EUR being deployed"""
         return self.btc_amount + self.ada_amount
 
     @property
@@ -65,8 +65,8 @@ class SimpleDCADecision(BaseModel):
         if self.is_hold:
             return f"HOLD - {self.reasoning}"
         return (
-            f"BUY: ${self.btc_amount:.2f} BTC ({self.btc_percentage:.0f}%), "
-            f"${self.ada_amount:.2f} ADA ({self.ada_percentage:.0f}%) "
+            f"BUY: €{self.btc_amount:.2f} BTC ({self.btc_percentage:.0f}%), "
+            f"€{self.ada_amount:.2f} ADA ({self.ada_percentage:.0f}%) "
             f"- {self.reasoning}"
         )
 
@@ -97,7 +97,7 @@ class Action(BaseModel):
     )
     asset: str | None = Field(
         None,
-        description="Trading pair (e.g., 'BTCUSDT', 'ADAUSDT')"
+        description="Trading pair (e.g., 'BTCEUR', 'ADAEUR')"
     )
     price: float | None = Field(
         None,
@@ -107,7 +107,7 @@ class Action(BaseModel):
     quantity: float | None = Field(
         None,
         ge=0,
-        description="USD amount to spend (NOT token quantity). Min $10."
+        description="EUR amount to spend (NOT token quantity). Min €10."
     )
     order_id: str | None = Field(
         None,
@@ -123,9 +123,9 @@ class Action(BaseModel):
         if self.type == ActionType.HOLD:
             return f"HOLD - {self.reasoning}"
         elif self.type == ActionType.PLACE_MARKET_BUY:
-            return f"BUY ${self.quantity:.2f} {self.asset} (market)"
+            return f"BUY €{self.quantity:.2f} {self.asset} (market)"
         elif self.type == ActionType.PLACE_LIMIT_BUY:
-            return f"BUY ${self.quantity:.2f} {self.asset} @ ${self.price:.2f} (limit)"
+            return f"BUY €{self.quantity:.2f} {self.asset} @ €{self.price:.2f} (limit)"
         elif self.type == ActionType.CANCEL_ORDER:
             return f"CANCEL {self.asset} order {self.order_id}"
         else:
@@ -139,13 +139,13 @@ class Action(BaseModel):
 class ExecutionResult(BaseModel):
     """Result of a single order execution"""
     success: bool = Field(description="Whether the order was successful")
-    asset: str = Field(description="Trading pair (e.g., 'BTCUSDT')")
+    asset: str = Field(description="Trading pair (e.g., 'BTCEUR')")
     action_type: ActionType = Field(description="Type of action executed")
     order_id: str | None = Field(None, description="Binance order ID")
     executed_price: float | None = Field(None, description="Actual execution price")
     executed_quantity: float | None = Field(None, description="Actual token quantity filled")
-    usd_amount: float | None = Field(None, description="USD amount deployed")
-    fee: float | None = Field(None, description="Trading fee in USD")
+    usd_amount: float | None = Field(None, description="EUR amount deployed")
+    fee: float | None = Field(None, description="Trading fee in EUR")
     error: str | None = Field(None, description="Error message if failed")
     timestamp: str = Field(description="ISO timestamp of execution")
 
@@ -154,8 +154,8 @@ class ExecutionResult(BaseModel):
         if not self.success:
             return f"❌ {self.asset} - {self.error}"
         return (
-            f"✅ {self.asset}: ${self.usd_amount:.2f} @ ${self.executed_price:.2f} "
-            f"(filled: {self.executed_quantity:.8f}, fee: ${self.fee:.2f})"
+            f"✅ {self.asset}: €{self.usd_amount:.2f} @ €{self.executed_price:.2f} "
+            f"(filled: {self.executed_quantity:.8f}, fee: €{self.fee:.2f})"
         )
 
 
@@ -180,7 +180,7 @@ class DCASession(BaseModel):
     session_type: SessionType = Field(description="Type of session")
 
     # Balance info
-    usdt_balance: float = Field(description="Starting USDT balance")
+    eur_balance: float = Field(description="Starting EUR balance")
     max_deploy: float = Field(description="Maximum allowed deployment")
     deployment_percentage: float = Field(description="Deployment % used (0.20 = 20%)")
 
@@ -201,9 +201,9 @@ class DCASession(BaseModel):
     )
 
     # Summary
-    total_deployed: float = Field(default=0.0, description="Total USD deployed")
+    total_deployed: float = Field(default=0.0, description="Total EUR deployed")
     total_fees: float = Field(default=0.0, description="Total fees paid")
-    remaining_balance: float = Field(description="USDT balance after execution")
+    remaining_balance: float = Field(description="EUR balance after execution")
 
     @property
     def was_successful(self) -> bool:
@@ -215,14 +215,14 @@ class DCASession(BaseModel):
     def __str__(self) -> str:
         """Human-readable summary"""
         if self.session_type == SessionType.SKIP:
-            return f"SKIP - Balance ${self.usdt_balance:.2f} < minimum"
+            return f"SKIP - Balance €{self.eur_balance:.2f} < minimum"
         elif self.session_type == SessionType.HOLD:
             return f"HOLD - {self.decision.reasoning}"
         else:
             return (
-                f"BUY - Deployed ${self.total_deployed:.2f} "
+                f"BUY - Deployed €{self.total_deployed:.2f} "
                 f"({len(self.execution_results)} orders, "
-                f"${self.total_fees:.2f} fees)"
+                f"€{self.total_fees:.2f} fees)"
             )
 
 
@@ -254,7 +254,7 @@ def decision_to_actions(decision: SimpleDCADecision) -> list[Action]:
     if decision.btc_amount >= 10:  # Binance minimum
         actions.append(Action(
             type=ActionType.PLACE_MARKET_BUY,
-            asset="BTCUSDT",
+            asset="BTCEUR",
             quantity=decision.btc_amount,
             reasoning=f"BTC allocation: {decision.reasoning}"
         ))
@@ -263,7 +263,7 @@ def decision_to_actions(decision: SimpleDCADecision) -> list[Action]:
     if decision.ada_amount >= 10:  # Binance minimum
         actions.append(Action(
             type=ActionType.PLACE_MARKET_BUY,
-            asset="ADAUSDT",
+            asset="ADAEUR",
             quantity=decision.ada_amount,
             reasoning=f"ADA allocation: {decision.reasoning}"
         ))
@@ -285,7 +285,7 @@ if __name__ == "__main__":
 
     print("Decision:")
     print(f"  {decision}")
-    print(f"  Total: ${decision.total_amount:.2f}")
+    print(f"  Total: €{decision.total_amount:.2f}")
     print(f"  BTC: {decision.btc_percentage:.1f}%")
     print(f"  ADA: {decision.ada_percentage:.1f}%")
     print(f"  Is Hold: {decision.is_hold}")

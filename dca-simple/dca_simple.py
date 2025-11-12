@@ -73,28 +73,28 @@ async def run_dca_session() -> DCASession:
         # ====================================================================
         # STEP 1: CHECK BALANCE AND CALCULATE DEPLOYMENT CAP
         # ====================================================================
-        log_info("Step 1/6: Checking USDT balance...")
+        log_info("Step 1/6: Checking EUR balance...")
 
         binance_data = BinanceMarketData(testnet=config.BINANCE_TESTNET)
         portfolio = binance_data.get_portfolio_balances()
 
-        usdt_balance = portfolio['USDT']['free']
-        max_deploy = config.calculate_deployment_amount(usdt_balance)
-        deployment_pct = config.get_deployment_percentage(usdt_balance)
+        eur_balance = portfolio['EUR']['free']
+        max_deploy = config.calculate_deployment_amount(eur_balance)
+        deployment_pct = config.get_deployment_percentage(eur_balance)
 
-        print(f"   USDT Balance: ${usdt_balance:.2f}")
-        print(f"   Deployment Cap: ${max_deploy:.2f} ({deployment_pct*100:.0f}%)")
+        print(f"   EUR Balance: €{eur_balance:.2f}")
+        print(f"   Deployment Cap: €{max_deploy:.2f} ({deployment_pct*100:.0f}%)")
 
         # Check if balance is too low
-        if usdt_balance < config.MIN_USDT_THRESHOLD:
-            log_warning(f"Balance ${usdt_balance:.2f} < minimum ${config.MIN_USDT_THRESHOLD}")
+        if eur_balance < config.MIN_EUR_THRESHOLD:
+            log_warning(f"Balance €{eur_balance:.2f} < minimum €{config.MIN_EUR_THRESHOLD}")
             print("   ⏭️  Skipping session - insufficient balance\n")
 
             # Create SKIP session
             session = DCASession(
                 timestamp=timestamp,
                 session_type=SessionType.SKIP,
-                usdt_balance=usdt_balance,
+                eur_balance=eur_balance,
                 max_deploy=0.0,
                 deployment_percentage=0.0,
                 btc_price=0.0,
@@ -105,10 +105,10 @@ async def run_dca_session() -> DCASession:
                 decision=SimpleDCADecision(
                     btc_amount=0.0,
                     ada_amount=0.0,
-                    reasoning=f"Balance ${usdt_balance:.2f} below minimum ${config.MIN_USDT_THRESHOLD}",
+                    reasoning=f"Balance €{eur_balance:.2f} below minimum €{config.MIN_EUR_THRESHOLD}",
                     confidence=5
                 ),
-                remaining_balance=usdt_balance
+                remaining_balance=eur_balance
             )
 
             send_notification(session)
@@ -152,7 +152,7 @@ async def run_dca_session() -> DCASession:
             btc_amount=decision.btc_amount,
             ada_amount=decision.ada_amount,
             max_deploy=max_deploy,
-            usdt_balance=usdt_balance
+            eur_balance=eur_balance
         )
 
         if not is_valid:
@@ -168,7 +168,7 @@ async def run_dca_session() -> DCASession:
             session = DCASession(
                 timestamp=timestamp,
                 session_type=SessionType.HOLD,
-                usdt_balance=usdt_balance,
+                eur_balance=eur_balance,
                 max_deploy=max_deploy,
                 deployment_percentage=deployment_pct,
                 btc_price=btc['price'],
@@ -177,7 +177,7 @@ async def run_dca_session() -> DCASession:
                 ada_rsi=ada['indicators']['rsi'],
                 fear_greed=fear_greed,
                 decision=decision,
-                remaining_balance=usdt_balance
+                remaining_balance=eur_balance
             )
 
             send_notification(session)
@@ -194,30 +194,30 @@ async def run_dca_session() -> DCASession:
 
         # Execute BTC order
         if decision.btc_amount >= config.MIN_ORDER_SIZE:
-            btc_result = executor.execute_market_buy("BTCUSDT", decision.btc_amount)
+            btc_result = executor.execute_market_buy("BTCEUR", decision.btc_amount)
             results.append(btc_result)
 
         # Execute ADA order
         if decision.ada_amount >= config.MIN_ORDER_SIZE:
-            ada_result = executor.execute_market_buy("ADAUSDT", decision.ada_amount)
+            ada_result = executor.execute_market_buy("ADAEUR", decision.ada_amount)
             results.append(ada_result)
 
         # Calculate totals
         total_deployed = sum(r.usd_amount for r in results if r.success and r.usd_amount)
         total_fees = sum(r.fee for r in results if r.success and r.fee)
-        remaining_balance = usdt_balance - total_deployed - total_fees
+        remaining_balance = eur_balance - total_deployed - total_fees
 
         print(f"\n   💰 EXECUTION SUMMARY:")
-        print(f"      Total Deployed: ${total_deployed:.2f}")
-        print(f"      Total Fees: ${total_fees:.4f}")
-        print(f"      Remaining Balance: ${remaining_balance:.2f}")
+        print(f"      Total Deployed: €{total_deployed:.2f}")
+        print(f"      Total Fees: €{total_fees:.4f}")
+        print(f"      Remaining Balance: €{remaining_balance:.2f}")
         print()
 
         # Create BUY session
         session = DCASession(
             timestamp=timestamp,
             session_type=SessionType.BUY,
-            usdt_balance=usdt_balance,
+            eur_balance=eur_balance,
             max_deploy=max_deploy,
             deployment_percentage=deployment_pct,
             btc_price=btc['price'],
@@ -277,10 +277,10 @@ def send_notification(session: DCASession):
 🚫 **DCA SESSION - SKIPPED**
 
 **Time**: {timestamp_str}
-**Balance**: ${session.usdt_balance:.2f} USDT
-**Reason**: Balance below minimum threshold (${config.MIN_USDT_THRESHOLD})
+**Balance**: €{session.eur_balance:.2f} EUR
+**Reason**: Balance below minimum threshold (€{config.MIN_EUR_THRESHOLD})
 
-✋ Waiting for more USDT deposit...
+✋ Waiting for more EUR deposit...
 """
 
         elif session.session_type == SessionType.HOLD:
@@ -290,12 +290,12 @@ def send_notification(session: DCASession):
 ✋ **DCA SESSION - HOLD**
 
 **Time**: {timestamp_str}
-**Balance**: ${session.usdt_balance:.2f} USDT
-**Max Deploy**: ${session.max_deploy:.2f} ({session.deployment_percentage*100:.0f}%)
+**Balance**: €{session.eur_balance:.2f} EUR
+**Max Deploy**: €{session.max_deploy:.2f} ({session.deployment_percentage*100:.0f}%)
 
 📊 **Market Snapshot**:
-BTC: ${session.btc_price:,.2f} (RSI: {session.btc_rsi:.1f})
-ADA: ${session.ada_price:.4f} (RSI: {session.ada_rsi:.1f})
+BTC: €{session.btc_price:,.2f} (RSI: {session.btc_rsi:.1f})
+ADA: €{session.ada_price:.4f} (RSI: {session.ada_rsi:.1f})
 Fear & Greed: {session.fear_greed}/100 ({fg_label})
 
 🤖 **AI Decision**: HOLD
@@ -314,7 +314,7 @@ Fear & Greed: {session.fear_greed}/100 ({fg_label})
                 if result.success:
                     symbol = "BTC" if "BTC" in result.asset else "ADA"
                     order_details.append(
-                        f"   • {symbol}: ${result.usd_amount:.2f} @ ${result.executed_price:.8f}"
+                        f"   • {symbol}: €{result.usd_amount:.2f} @ €{result.executed_price:.8f}"
                     )
                 else:
                     symbol = "BTC" if "BTC" in result.asset else "ADA"
@@ -326,12 +326,12 @@ Fear & Greed: {session.fear_greed}/100 ({fg_label})
 {"✅" if session.was_successful else "⚠️"} **DCA SESSION - BUY**
 
 **Time**: {timestamp_str}
-**Balance**: ${session.usdt_balance:.2f} USDT
-**Deployed**: ${session.total_deployed:.2f} ({session.deployment_percentage*100:.0f}%)
+**Balance**: €{session.eur_balance:.2f} EUR
+**Deployed**: €{session.total_deployed:.2f} ({session.deployment_percentage*100:.0f}%)
 
 📊 **Market Snapshot**:
-BTC: ${session.btc_price:,.2f} (RSI: {session.btc_rsi:.1f})
-ADA: ${session.ada_price:.4f} (RSI: {session.ada_rsi:.1f})
+BTC: €{session.btc_price:,.2f} (RSI: {session.btc_rsi:.1f})
+ADA: €{session.ada_price:.4f} (RSI: {session.ada_rsi:.1f})
 Fear & Greed: {session.fear_greed}/100 ({fg_label})
 
 🤖 **AI Decision**:
@@ -342,9 +342,9 @@ Fear & Greed: {session.fear_greed}/100 ({fg_label})
 {orders_str}
 
 💰 **Summary**:
-Total Deployed: ${session.total_deployed:.2f}
-Total Fees: ${session.total_fees:.4f}
-Remaining: ${session.remaining_balance:.2f} USDT
+Total Deployed: €{session.total_deployed:.2f}
+Total Fees: €{session.total_fees:.4f}
+Remaining: €{session.remaining_balance:.2f} EUR
 
 {"✅ All orders successful!" if session.was_successful else "⚠️ Some orders failed - check logs"}
 """

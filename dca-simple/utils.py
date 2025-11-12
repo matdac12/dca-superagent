@@ -208,10 +208,10 @@ def format_market_snapshot(intelligence: Dict[str, Any]) -> str:
 ║   Volume:    ${ada['volume_24h']:>10,.0f}                               ║
 ╠══════════════════════════════════════════════════════════════╣
 ║ PORTFOLIO                                                    ║
-║   USDT:      ${portfolio['usdt']['free']:>10,.2f}                               ║
-║   BTC:       {portfolio['btc']['free']:>10.8f}  (${portfolio['btc']['value_usd']:>8,.2f})     ║
-║   ADA:       {portfolio['ada']['free']:>10.2f}  (${portfolio['ada']['value_usd']:>8,.2f})     ║
-║   Total:     ${portfolio['total_value_usd']:>10,.2f}                               ║
+║   EUR:       €{portfolio['eur']['free']:>10,.2f}                               ║
+║   BTC:       {portfolio['btc']['free']:>10.8f}  (€{portfolio['btc']['value_usd']:>8,.2f})     ║
+║   ADA:       {portfolio['ada']['free']:>10.2f}  (€{portfolio['ada']['value_usd']:>8,.2f})     ║
+║   Total:     €{portfolio['total_value_usd']:>10,.2f}                               ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     return snapshot
@@ -247,16 +247,16 @@ def validate_deployment_amounts(
     btc_amount: float,
     ada_amount: float,
     max_deploy: float,
-    usdt_balance: float
+    eur_balance: float
 ) -> tuple[bool, str]:
     """
     Validate deployment amounts against safety constraints.
 
     Args:
-        btc_amount: USD for BTC
-        ada_amount: USD for ADA
+        btc_amount: EUR for BTC
+        ada_amount: EUR for ADA
         max_deploy: Maximum allowed deployment
-        usdt_balance: Available USDT
+        eur_balance: Available EUR
 
     Returns:
         Tuple of (is_valid, error_message)
@@ -265,18 +265,18 @@ def validate_deployment_amounts(
 
     # Check: Total within max deploy cap
     if total > max_deploy:
-        return False, f"Total ${total:.2f} exceeds max deploy ${max_deploy:.2f}"
+        return False, f"Total €{total:.2f} exceeds max deploy €{max_deploy:.2f}"
 
     # Check: Total within available balance
-    if total > usdt_balance:
-        return False, f"Total ${total:.2f} exceeds balance ${usdt_balance:.2f}"
+    if total > eur_balance:
+        return False, f"Total €{total:.2f} exceeds balance €{eur_balance:.2f}"
 
     # Check: Individual orders meet minimum
     if btc_amount > 0 and btc_amount < config.MIN_ORDER_SIZE:
-        return False, f"BTC amount ${btc_amount:.2f} below minimum ${config.MIN_ORDER_SIZE}"
+        return False, f"BTC amount €{btc_amount:.2f} below minimum €{config.MIN_ORDER_SIZE}"
 
     if ada_amount > 0 and ada_amount < config.MIN_ORDER_SIZE:
-        return False, f"ADA amount ${ada_amount:.2f} below minimum ${config.MIN_ORDER_SIZE}"
+        return False, f"ADA amount €{ada_amount:.2f} below minimum €{config.MIN_ORDER_SIZE}"
 
     # Check: At least one order if not hold
     if total > 0 and btc_amount == 0 and ada_amount == 0:
