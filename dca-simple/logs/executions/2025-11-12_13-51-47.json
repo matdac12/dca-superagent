@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-11-12T13:51:47.177922",
+  "session_type": "BUY",
+  "usdt_balance": 62163.8574525,
+  "max_deploy": 12432.771490500001,
+  "deployment_percentage": 0.2,
+  "btc_price": 105057.72,
+  "ada_price": 0.5762,
+  "btc_rsi": 63.98,
+  "ada_rsi": 59.52,
+  "fear_greed": 24,
+  "decision": {
+    "btc_amount": 7000.0,
+    "ada_amount": 5432.77,
+    "reasoning": "Extreme Fear (24/100) signals a buying opportunity. BTC RSI 64 and ADA RSI 59.5 indicate not oversold but still constructive; prices sit near middle Bollinger bands. Deploying today starts long-term accumulation without overcommitting. BTC gets the larger share for core exposure; ADA adds diversification. Total deployment $12,432.77 leaves room to add on future pullbacks.",
+    "confidence": 4
+  },
+  "execution_results": [
+    {
+      "success": true,
+      "asset": "BTCUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 7000.0,
+      "fee": 7.0,
+      "error": null,
+      "timestamp": "2025-11-12T13:52:30.297739"
+    },
+    {
+      "success": true,
+      "asset": "ADAUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 5432.77,
+      "fee": 5.4327700000000005,
+      "error": null,
+      "timestamp": "2025-11-12T13:52:30.298045"
+    }
+  ],
+  "total_deployed": 12432.77,
+  "total_fees": 12.432770000000001,
+  "remaining_balance": 49718.6546825
+}

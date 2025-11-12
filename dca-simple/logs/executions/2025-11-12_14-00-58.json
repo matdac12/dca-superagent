@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-11-12T14:00:58.989380",
+  "session_type": "SKIP",
+  "usdt_balance": 0.06544411,
+  "max_deploy": 0.0,
+  "deployment_percentage": 0.0,
+  "btc_price": 0.0,
+  "ada_price": 0.0,
+  "btc_rsi": 0.0,
+  "ada_rsi": 0.0,
+  "fear_greed": 50,
+  "decision": {
+    "btc_amount": 0.0,
+    "ada_amount": 0.0,
+    "reasoning": "Balance $0.07 below minimum $10.0",
+    "confidence": 5
+  },
+  "execution_results": [],
+  "total_deployed": 0.0,
+  "total_fees": 0.0,
+  "remaining_balance": 0.06544411
+}

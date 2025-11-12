@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-11-12T13:35:59.966157",
+  "session_type": "BUY",
+  "usdt_balance": 62163.8574525,
+  "max_deploy": 12432.771490500001,
+  "deployment_percentage": 0.2,
+  "btc_price": 105009.98,
+  "ada_price": 0.5772,
+  "btc_rsi": 63.52,
+  "ada_rsi": 60.45,
+  "fear_greed": 24,
+  "decision": {
+    "btc_amount": 6000.0,
+    "ada_amount": 4000.0,
+    "reasoning": "Extreme Fear signals opportunistic buys, but RSI 63.5 (BTC) and 60.5 (ADA) show ongoing strength and price near upper Bollinger bands, suggesting limited immediate pullbacks. Prioritize BTC with a larger tranche and modest ADA exposure today: $6k BTC, $4k ADA. Maintain dry powder for future dips.",
+    "confidence": 3
+  },
+  "execution_results": [
+    {
+      "success": true,
+      "asset": "BTCUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 6000.0,
+      "fee": 6.0,
+      "error": null,
+      "timestamp": "2025-11-12T13:36:39.711664"
+    },
+    {
+      "success": true,
+      "asset": "ADAUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 4000.0,
+      "fee": 4.0,
+      "error": null,
+      "timestamp": "2025-11-12T13:36:39.711962"
+    }
+  ],
+  "total_deployed": 10000.0,
+  "total_fees": 10.0,
+  "remaining_balance": 52153.8574525
+}

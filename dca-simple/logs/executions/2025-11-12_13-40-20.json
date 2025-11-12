@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-11-12T13:40:20.001027",
+  "session_type": "BUY",
+  "usdt_balance": 62163.8574525,
+  "max_deploy": 12432.771490500001,
+  "deployment_percentage": 0.2,
+  "btc_price": 104926.71,
+  "ada_price": 0.5761,
+  "btc_rsi": 62.24,
+  "ada_rsi": 59.42,
+  "fear_greed": 24,
+  "decision": {
+    "btc_amount": 3000.0,
+    "ada_amount": 1000.0,
+    "reasoning": "Extreme Fear in market creates buying opportunities, but RSI BTC 62.2 and RSI ADA 59.4 sit in the 55-70 strengthening range, implying ongoing positive momentum but not a pullback-ready oversold setup. Prices are near upper Bollinger bands (BTC ~104,926 vs upper ~104,969; ADA ~0.576 vs upper ~0.58), signaling limited short-term downside buffer and potential resistance. Favor conservative deployment today to continue long-term accumulation: allocate more to BTC (dominant long-term asset) and a mil",
+    "confidence": 3
+  },
+  "execution_results": [
+    {
+      "success": true,
+      "asset": "BTCUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 3000.0,
+      "fee": 3.0,
+      "error": null,
+      "timestamp": "2025-11-12T13:40:54.523327"
+    },
+    {
+      "success": true,
+      "asset": "ADAUSDT",
+      "action_type": "PLACE_MARKET_BUY",
+      "order_id": "DRY_RUN_12345",
+      "executed_price": 0.0,
+      "executed_quantity": 0.0,
+      "usd_amount": 1000.0,
+      "fee": 1.0,
+      "error": null,
+      "timestamp": "2025-11-12T13:40:54.523721"
+    }
+  ],
+  "total_deployed": 4000.0,
+  "total_fees": 4.0,
+  "remaining_balance": 58159.8574525
+}
