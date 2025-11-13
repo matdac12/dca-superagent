@@ -119,3 +119,43 @@ Add (runs daily at 9 AM):
 ✅ Full audit trail in logs
 
 ⚠️ **Uses real money when `DRY_RUN=false`** - test thoroughly first!
+
+---
+
+## Web Dashboard
+
+View your portfolio, holdings, and DCA purchase history in a clean web interface.
+
+### Local Development
+```bash
+cd dca-simple
+source venv/bin/activate
+python app.py
+```
+Visit: `http://localhost:5001` (port 5001 to avoid macOS AirPlay on 5000)
+
+### PythonAnywhere Deployment
+1. Go to **Web** tab
+2. Click **Add a new web app**
+3. Select **Flask** and **Python 3.10+**
+4. Set source code: `/home/yourusername/dca-superagent/dca-simple`
+5. Set working directory: `/home/yourusername/dca-superagent/dca-simple`
+6. WSGI configuration file - edit to:
+```python
+import sys
+path = '/home/yourusername/dca-superagent/dca-simple'
+if path not in sys.path:
+    sys.path.append(path)
+
+from app import app as application
+```
+7. Reload web app
+
+Your dashboard will be live at: `https://yourusername.pythonanywhere.com`
+
+**Dashboard Features:**
+- 📊 Real-time portfolio value & P&L
+- 💰 Holdings breakdown (EUR, BTC, ADA)
+- 📈 Purchase history
+- 📉 Market conditions (RSI, Fear & Greed)
+- 🔄 Auto-refreshes every 30 seconds
