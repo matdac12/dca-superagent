@@ -30,21 +30,14 @@ MODEL = "gpt-5-nano"  # Fast, cheap, proven in existing system
 # ============================================================================
 
 # Balance thresholds
-MIN_EUR_THRESHOLD = 10.0       # Skip if balance < €10 EUR
-MIN_DEPLOYABLE_AMOUNT = 10.0   # Skip if deployable amount < €10 (don't even call AI)
-MIN_ORDER_SIZE = 10.0          # Binance minimum order size
-FEE_CUSHION = 5.0              # Always leave €5 for fees
+MIN_EUR_THRESHOLD = 10.0  # Skip if balance < €10 EUR
+MIN_ORDER_SIZE = 10.0     # Binance minimum order size per asset
 
 # Assets to trade
 ASSETS = {
     "BTC": "BTCEUR",
     "ADA": "ADAEUR"
 }
-
-# Safety limits (matching existing system for consistency)
-MAX_ORDERS_PER_RUN = 2        # BTC + ADA max
-MAX_EXPOSURE_PCT = 50.0       # Max 50% of EUR per decision
-PRICE_DEVIATION_PCT = 5.0     # For safety validator
 
 # ============================================================================
 # DEPLOYMENT LOGIC
@@ -55,11 +48,14 @@ def calculate_deployment_amount(eur_balance: float) -> float:
     Calculate deployment amount based on balance.
 
     Strategy (conservative - deploy LESS as balance grows):
-    - €10-20: Deploy 95% (small amount, use most with small fee cushion)
+    - €10-20: Deploy 95% (5% reserved for fees and rounding)
     - €20-50: Deploy 50% (medium amount, deploy half)
     - €50-100: Deploy 35% (larger amount, more conservative)
     - €100-500: Deploy 25% (even more conservative)
     - €500+: Deploy 20% (very conservative)
+
+    Note: Fees are paid in the purchased asset (BTC/ADA), not EUR.
+    The percentage-based approach naturally leaves cushion for any rounding needs.
 
     Args:
         eur_balance: Current EUR balance
@@ -206,18 +202,14 @@ def print_config():
     print(f"Environment: {'🧪 Testnet' if BINANCE_TESTNET else '🏦 Production'}")
     print(f"Model: {MODEL}")
     print(f"\nBalance Thresholds:")
-    print(f"  Min EUR: €{MIN_EUR_THRESHOLD}")
-    print(f"  Min Order: €{MIN_ORDER_SIZE}")
-    print(f"  Fee Cushion: €{FEE_CUSHION}")
+    print(f"  Min EUR Balance: €{MIN_EUR_THRESHOLD}")
+    print(f"  Min Order Size: €{MIN_ORDER_SIZE} per asset")
     print(f"\nDeployment Strategy (% decreases as balance grows):")
-    print(f"  €10-20:     95% deployment")
+    print(f"  €10-20:     95% deployment (5% reserved for fees/rounding)")
     print(f"  €20-50:     50% deployment")
     print(f"  €50-100:    35% deployment")
     print(f"  €100-500:   25% deployment")
     print(f"  €500+:      20% deployment")
-    print(f"\nSafety Limits:")
-    print(f"  Max Orders/Run: {MAX_ORDERS_PER_RUN}")
-    print(f"  Max Exposure: {MAX_EXPOSURE_PCT}%")
     print(f"\nAssets: {', '.join(ASSETS.keys())}")
     print(f"\nTelegram: {'✅ Enabled' if TELEGRAM_BOT_TOKEN else '❌ Disabled'}")
     print("="*60 + "\n")

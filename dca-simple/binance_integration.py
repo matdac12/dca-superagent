@@ -29,7 +29,7 @@ class BinanceMarketData:
         # Initialize client
         self.client = Client(
             api_key=os.getenv('BINANCE_API_KEY'),
-            api_secret=os.getenv('BINANCE_API_SECRET'),
+            api_secret=os.getenv('BINANCE_SECRET_KEY'),
             testnet=testnet
         )
 

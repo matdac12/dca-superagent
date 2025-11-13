@@ -77,11 +77,10 @@ class SimpleMarketExecutor:
             from binance_integration import BinanceMarketData
             binance_data = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
-            # Get current price for the asset (works for any pair)
+            # Get current price for reference (for display only)
             current_price = binance_data.get_ticker_24h(asset)['price']
 
-            # Calculate quantity to buy
-            # Get symbol info for precision
+            # Initialize Binance client
             from binance.client import Client
             client = Client(
                 api_key=config.BINANCE_API_KEY,
@@ -89,50 +88,13 @@ class SimpleMarketExecutor:
                 testnet=config.BINANCE_TESTNET
             )
 
-            # Get symbol filters
-            exchange_info = client.get_exchange_info()
-            symbol_info = next(
-                (s for s in exchange_info['symbols'] if s['symbol'] == asset),
-                None
-            )
+            print(f"   Price: €{current_price:.2f}, Spending exactly: €{usd_amount:.2f}")
 
-            if not symbol_info:
-                raise ValueError(f"Symbol {asset} not found in exchange info")
-
-            # Find LOT_SIZE filter for quantity precision
-            lot_size_filter = next(
-                (f for f in symbol_info['filters'] if f['filterType'] == 'LOT_SIZE'),
-                None
-            )
-
-            if lot_size_filter:
-                step_size = float(lot_size_filter['stepSize'])
-                min_qty = float(lot_size_filter['minQty'])
-
-                # Calculate precision from step_size (count decimal places)
-                step_str = f"{step_size:.10f}".rstrip('0')
-                if '.' in step_str:
-                    precision = len(step_str.split('.')[1])
-                else:
-                    precision = 0
-            else:
-                precision = 8  # Default
-                min_qty = 0.00000001
-
-            # Calculate quantity
-            raw_quantity = usd_amount / current_price
-            quantity = round(raw_quantity, precision)
-
-            # Ensure it meets minimum
-            if quantity < min_qty:
-                quantity = min_qty
-
-            print(f"   Price: €{current_price:.8f}, Quantity: {quantity:.8f} (precision: {precision})")
-
-            # Place market order
+            # Place market order using quoteOrderQty for exact EUR spending
+            # Binance will automatically calculate the correct quantity
             order_response = client.order_market_buy(
                 symbol=asset,
-                quantity=quantity
+                quoteOrderQty=usd_amount
             )
 
             # Parse response

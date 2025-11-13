@@ -27,7 +27,6 @@ sys.path.insert(1, str(openai_agents_dir))  # Insert at position 1, after curren
 
 # Import local binance_integration (EUR support), but other modules from parent
 from binance_integration import BinanceMarketData  # Local EUR version
-from safety_validator import SafetyValidator  # From parent
 from telegram_notifier import TelegramNotifier  # From parent
 from schemas import SimpleDCADecision, DCASession, SessionType, ExecutionResult
 from decision_agent import get_decision
@@ -239,13 +238,14 @@ async def run_dca_session() -> DCASession:
             results.append(ada_result)
 
         # Calculate totals
+        # Note: Fees are paid in the asset (BTC/ADA), not EUR, so don't subtract from EUR balance
         total_deployed = sum(r.usd_amount for r in results if r.success and r.usd_amount)
         total_fees = sum(r.fee for r in results if r.success and r.fee)
-        remaining_balance = eur_balance - total_deployed - total_fees
+        remaining_balance = eur_balance - total_deployed
 
         print(f"\n   💰 EXECUTION SUMMARY:")
         print(f"      Total Deployed: €{total_deployed:.2f}")
-        print(f"      Total Fees: €{total_fees:.4f}")
+        print(f"      Total Fees: {total_fees:.8f} (paid in asset)")
         print(f"      Remaining Balance: €{remaining_balance:.2f}")
         print()
 
