@@ -2,7 +2,7 @@
 // Inspired by Trade Wars dashboard pattern
 
 let refreshInterval = null;
-const REFRESH_RATE = 30000; // 30 seconds
+const REFRESH_RATE = 300000; // 5 minutes
 
 // Format currency
 function formatCurrency(value) {
@@ -116,6 +116,10 @@ async function loadPortfolio() {
         document.getElementById('ada-price').textContent = formatCurrency(prices.ada);
         document.getElementById('btc-rsi').textContent = data.market.btc_rsi.toFixed(1);
         document.getElementById('ada-rsi').textContent = data.market.ada_rsi.toFixed(1);
+
+        // Update header price tickers
+        document.getElementById('header-btc-price').textContent = formatCurrency(prices.btc);
+        document.getElementById('header-ada-price').textContent = formatCurrency(prices.ada);
 
         const fearGreed = data.market.fear_greed;
         const fearGreedElement = document.getElementById('fear-greed');
@@ -250,7 +254,7 @@ function startAutoRefresh() {
         clearInterval(refreshInterval);
     }
 
-    // Refresh every 30 seconds
+    // Refresh every 5 minutes
     refreshInterval = setInterval(() => {
         console.log('Auto-refreshing dashboard...');
         loadDashboard();

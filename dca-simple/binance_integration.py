@@ -359,13 +359,15 @@ class BinanceMarketData:
             logger.error(f"Failed to fetch open orders: {e}")
             raise
 
-    def get_trade_history(self, symbols: Optional[List[str]] = None) -> List[Dict]:
+    def get_trade_history(self, symbols: Optional[List[str]] = None, start_date: Optional[str] = None) -> List[Dict]:
         """
         Fetch historical trades from Binance for cost basis calculation
 
         Args:
             symbols: List of trading pairs (e.g., ['BTCEUR', 'ADAEUR'])
                     If None, fetches for default EUR pairs
+            start_date: ISO format date string (e.g., '2025-11-11') to filter trades from
+                       Only trades on or after this date will be included
 
         Returns:
             List of trade dictionaries with:
@@ -381,6 +383,14 @@ class BinanceMarketData:
         if symbols is None:
             symbols = ['BTCEUR', 'ADAEUR']
 
+        # Default start date to Nov 11, 2025 to filter out old trades
+        if start_date is None:
+            start_date = '2025-11-11'
+
+        # Parse start date for filtering
+        from datetime import datetime as dt
+        filter_timestamp = dt.fromisoformat(start_date).replace(hour=0, minute=0, second=0)
+
         all_trades = []
 
         try:
@@ -389,9 +399,16 @@ class BinanceMarketData:
                     # Fetch all trades for this symbol (max 1000 most recent)
                     trades = self.client.get_my_trades(symbol=symbol, limit=1000)
 
+                    trades_before_filter = len(all_trades)
                     for trade in trades:
+                        trade_time = datetime.fromtimestamp(trade['time'] / 1000)
+
+                        # Filter out trades before start_date
+                        if trade_time < filter_timestamp:
+                            continue
+
                         all_trades.append({
-                            'timestamp': datetime.fromtimestamp(trade['time'] / 1000).isoformat(),
+                            'timestamp': trade_time.isoformat(),
                             'symbol': trade['symbol'],
                             'side': 'BUY' if trade['isBuyer'] else 'SELL',
                             'price': float(trade['price']),
@@ -402,7 +419,8 @@ class BinanceMarketData:
                             'order_id': trade['orderId']
                         })
 
-                    logger.info(f"Fetched {len(trades)} trades for {symbol}")
+                    filtered_count = len(all_trades) - trades_before_filter
+                    logger.info(f"Fetched {filtered_count}/{len(trades)} trades for {symbol} (from {start_date})")
 
                 except BinanceAPIException as e:
                     logger.warning(f"Could not fetch trades for {symbol}: {e}")
@@ -411,7 +429,7 @@ class BinanceMarketData:
             # Sort by timestamp (oldest first)
             all_trades.sort(key=lambda x: x['timestamp'])
 
-            logger.info(f"✓ Fetched {len(all_trades)} total trades across all symbols")
+            logger.info(f"✓ Fetched {len(all_trades)} total trades across all symbols (from {start_date})")
 
             return all_trades
 

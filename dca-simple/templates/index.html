@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DCA Simple - Portfolio Dashboard</title>
+    <title>DCA SuperAgent - Portfolio Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
@@ -41,11 +41,25 @@
     <div class="max-w-7xl mx-auto px-6 py-8">
         <!-- Header -->
         <div class="mb-8">
-            <h1 class="text-4xl font-bold text-gray-900 mb-2">DCA Simple Dashboard</h1>
-            <p class="text-gray-600">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">DCA SuperAgent</h1>
+            <p class="text-gray-600 mb-3">
                 AI-powered Bitcoin & Cardano accumulation
                 <span id="last-updated" class="text-sm text-gray-400 ml-2"></span>
             </p>
+
+            <!-- Price Tickers -->
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
+                    <span class="text-sm font-semibold text-gray-700">BTC</span>
+                    <span id="header-btc-price" class="text-sm font-bold mono text-gray-900">€0</span>
+                </div>
+                <div class="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span class="text-sm font-semibold text-gray-700">ADA</span>
+                    <span id="header-ada-price" class="text-sm font-bold mono text-gray-900">€0.00</span>
+                </div>
+            </div>
         </div>
 
         <!-- Loading State -->
