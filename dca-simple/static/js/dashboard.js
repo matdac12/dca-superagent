@@ -117,9 +117,11 @@ async function loadPortfolio() {
         document.getElementById('btc-rsi').textContent = data.market.btc_rsi.toFixed(1);
         document.getElementById('ada-rsi').textContent = data.market.ada_rsi.toFixed(1);
 
-        // Update header price tickers
-        document.getElementById('header-btc-price').textContent = formatCurrency(prices.btc);
-        document.getElementById('header-ada-price').textContent = formatCurrency(prices.ada);
+        // Update header price tickers (check if elements exist)
+        const headerBtcPrice = document.getElementById('header-btc-price');
+        const headerAdaPrice = document.getElementById('header-ada-price');
+        if (headerBtcPrice) headerBtcPrice.textContent = formatCurrency(prices.btc);
+        if (headerAdaPrice) headerAdaPrice.textContent = formatCurrency(prices.ada);
 
         const fearGreed = data.market.fear_greed;
         const fearGreedElement = document.getElementById('fear-greed');
