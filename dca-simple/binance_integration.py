@@ -359,6 +359,136 @@ class BinanceMarketData:
             logger.error(f"Failed to fetch open orders: {e}")
             raise
 
+    def get_trade_history(self, symbols: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Fetch historical trades from Binance for cost basis calculation
+
+        Args:
+            symbols: List of trading pairs (e.g., ['BTCEUR', 'ADAEUR'])
+                    If None, fetches for default EUR pairs
+
+        Returns:
+            List of trade dictionaries with:
+            - timestamp: ISO format
+            - symbol: Trading pair
+            - side: BUY or SELL
+            - price: Execution price
+            - quantity: Amount of crypto purchased/sold
+            - quote_quantity: Amount in quote currency (EUR)
+            - commission: Fee amount
+            - commission_asset: Fee currency
+        """
+        if symbols is None:
+            symbols = ['BTCEUR', 'ADAEUR']
+
+        all_trades = []
+
+        try:
+            for symbol in symbols:
+                try:
+                    # Fetch all trades for this symbol (max 1000 most recent)
+                    trades = self.client.get_my_trades(symbol=symbol, limit=1000)
+
+                    for trade in trades:
+                        all_trades.append({
+                            'timestamp': datetime.fromtimestamp(trade['time'] / 1000).isoformat(),
+                            'symbol': trade['symbol'],
+                            'side': 'BUY' if trade['isBuyer'] else 'SELL',
+                            'price': float(trade['price']),
+                            'quantity': float(trade['qty']),
+                            'quote_quantity': float(trade['quoteQty']),  # EUR spent/received
+                            'commission': float(trade['commission']),
+                            'commission_asset': trade['commissionAsset'],
+                            'order_id': trade['orderId']
+                        })
+
+                    logger.info(f"Fetched {len(trades)} trades for {symbol}")
+
+                except BinanceAPIException as e:
+                    logger.warning(f"Could not fetch trades for {symbol}: {e}")
+                    continue
+
+            # Sort by timestamp (oldest first)
+            all_trades.sort(key=lambda x: x['timestamp'])
+
+            logger.info(f"✓ Fetched {len(all_trades)} total trades across all symbols")
+
+            return all_trades
+
+        except Exception as e:
+            logger.error(f"Failed to fetch trade history: {e}")
+            raise
+
+    def calculate_cost_basis(self) -> Dict:
+        """
+        Calculate accurate cost basis from actual Binance trade history
+
+        Returns:
+            {
+                'total_invested': float,  # Total EUR spent on buys
+                'total_sold': float,      # Total EUR received from sells
+                'net_invested': float,    # invested - sold
+                'btc_invested': float,    # EUR spent on BTC
+                'ada_invested': float,    # EUR spent on ADA
+                'btc_trades': int,
+                'ada_trades': int,
+                'total_trades': int
+            }
+        """
+        try:
+            trades = self.get_trade_history()
+
+            total_invested = 0
+            total_sold = 0
+            btc_invested = 0
+            ada_invested = 0
+            btc_trades = 0
+            ada_trades = 0
+
+            for trade in trades:
+                if trade['side'] == 'BUY':
+                    # EUR spent (including commission if in EUR)
+                    eur_spent = trade['quote_quantity']
+                    if trade['commission_asset'] == 'EUR':
+                        eur_spent += trade['commission']
+
+                    total_invested += eur_spent
+
+                    if 'BTC' in trade['symbol']:
+                        btc_invested += eur_spent
+                        btc_trades += 1
+                    elif 'ADA' in trade['symbol']:
+                        ada_invested += eur_spent
+                        ada_trades += 1
+
+                elif trade['side'] == 'SELL':
+                    # EUR received (minus commission if in EUR)
+                    eur_received = trade['quote_quantity']
+                    if trade['commission_asset'] == 'EUR':
+                        eur_received -= trade['commission']
+
+                    total_sold += eur_received
+
+            result = {
+                'total_invested': round(total_invested, 2),
+                'total_sold': round(total_sold, 2),
+                'net_invested': round(total_invested - total_sold, 2),
+                'btc_invested': round(btc_invested, 2),
+                'ada_invested': round(ada_invested, 2),
+                'btc_trades': btc_trades,
+                'ada_trades': ada_trades,
+                'total_trades': len(trades)
+            }
+
+            logger.info(f"Cost basis calculated: €{result['total_invested']:,.2f} invested "
+                       f"({btc_trades} BTC + {ada_trades} ADA trades)")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to calculate cost basis: {e}")
+            raise
+
     def get_complete_market_intelligence(self) -> Dict:
         """
         Fetch ALL market data in one call

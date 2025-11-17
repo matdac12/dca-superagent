@@ -70,66 +70,41 @@ def get_portfolio():
 
 @app.route('/api/history')
 def get_history():
-    """Get recent DCA purchase history from execution logs"""
+    """Get recent purchase history from actual Binance trades"""
     try:
-        execution_dir = Path(__file__).parent / 'logs' / 'executions'
+        binance = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
-        if not execution_dir.exists():
-            return jsonify({
-                'success': True,
-                'purchases': []
-            })
+        # Get actual trades from Binance
+        trades = binance.get_trade_history()
 
-        # Get all execution log files, sorted by date (newest first)
-        log_files = sorted(
-            execution_dir.glob('*.json'),
-            key=lambda x: x.stat().st_mtime,
-            reverse=True
-        )
-
+        # Convert to purchases format (filter only BUYs, newest first)
         purchases = []
-        for log_file in log_files[:20]:  # Last 20 sessions
-            try:
-                with open(log_file, 'r') as f:
-                    session = json.load(f)
+        for trade in trades:
+            if trade['side'] == 'BUY':
+                # Extract asset from symbol (e.g., BTCEUR -> BTC)
+                asset = trade['symbol'].replace('EUR', '').replace('USDT', '')
 
-                # Only include BUY sessions from EUR trading (skip old USDT logs)
-                if session.get('session_type') == 'BUY' and 'eur_balance' in session:
-                    decision = session.get('decision', {})
-                    btc_amount = decision.get('btc_amount', 0)
-                    ada_amount = decision.get('ada_amount', 0)
-
-                    # Add BTC purchase if any
-                    if btc_amount >= config.MIN_ORDER_SIZE:
-                        purchases.append({
-                            'timestamp': session['timestamp'],
-                            'asset': 'BTC',
-                            'amount_eur': btc_amount,
-                            'price': session.get('btc_price', 0),
-                            'confidence': decision.get('confidence', 0)
-                        })
-
-                    # Add ADA purchase if any
-                    if ada_amount >= config.MIN_ORDER_SIZE:
-                        purchases.append({
-                            'timestamp': session['timestamp'],
-                            'asset': 'ADA',
-                            'amount_eur': ada_amount,
-                            'price': session.get('ada_price', 0),
-                            'confidence': decision.get('confidence', 0)
-                        })
-            except Exception as e:
-                # Skip corrupted log files
-                continue
+                purchases.append({
+                    'timestamp': trade['timestamp'],
+                    'asset': asset,
+                    'amount_eur': trade['quote_quantity'],  # Actual EUR spent
+                    'price': trade['price'],
+                    'quantity': trade['quantity'],  # Amount of crypto purchased
+                    'source': 'binance',  # Mark as real trade
+                    'order_id': trade['order_id']
+                })
 
         # Sort by timestamp (newest first)
         purchases.sort(key=lambda x: x['timestamp'], reverse=True)
 
         return jsonify({
             'success': True,
-            'purchases': purchases[:10]  # Return last 10 purchases
+            'purchases': purchases[:20]  # Return last 20 purchases
         })
     except Exception as e:
+        import traceback
+        print(f"ERROR in /api/history: {str(e)}")
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -138,66 +113,45 @@ def get_history():
 
 @app.route('/api/stats')
 def get_stats():
-    """Calculate performance statistics from execution logs"""
+    """Calculate performance statistics from actual Binance trade history"""
     try:
-        execution_dir = Path(__file__).parent / 'logs' / 'executions'
+        binance = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
-        if not execution_dir.exists():
-            return jsonify({
-                'success': True,
-                'stats': {
-                    'total_buys': 0,
-                    'total_invested': 0,
-                    'btc_purchases': 0,
-                    'ada_purchases': 0,
-                    'avg_btc_price': 0,
-                    'avg_ada_price': 0
-                }
-            })
+        # Get actual cost basis from Binance
+        cost_basis = binance.calculate_cost_basis()
 
-        # Process all execution logs
-        log_files = list(execution_dir.glob('*.json'))
+        # Get all trades to calculate average prices
+        trades = binance.get_trade_history()
 
-        total_buys = 0
-        total_invested = 0
-        btc_purchases = []
-        ada_purchases = []
+        btc_buy_prices = []
+        ada_buy_prices = []
 
-        for log_file in log_files:
-            try:
-                with open(log_file, 'r') as f:
-                    session = json.load(f)
-
-                # Only include EUR trading (skip old USDT logs)
-                if session.get('session_type') == 'BUY' and 'eur_balance' in session:
-                    decision = session.get('decision', {})
-                    btc_amount = decision.get('btc_amount', 0)
-                    ada_amount = decision.get('ada_amount', 0)
-
-                    if btc_amount >= config.MIN_ORDER_SIZE:
-                        total_buys += 1
-                        total_invested += btc_amount
-                        btc_purchases.append(session.get('btc_price', 0))
-
-                    if ada_amount >= config.MIN_ORDER_SIZE:
-                        total_buys += 1
-                        total_invested += ada_amount
-                        ada_purchases.append(session.get('ada_price', 0))
-            except Exception:
-                continue
+        for trade in trades:
+            if trade['side'] == 'BUY':
+                if 'BTC' in trade['symbol']:
+                    btc_buy_prices.append(trade['price'])
+                elif 'ADA' in trade['symbol']:
+                    ada_buy_prices.append(trade['price'])
 
         return jsonify({
             'success': True,
             'stats': {
-                'total_buys': total_buys,
-                'total_invested': round(total_invested, 2),
-                'btc_purchases': len(btc_purchases),
-                'ada_purchases': len(ada_purchases),
-                'avg_btc_price': round(sum(btc_purchases) / len(btc_purchases), 2) if btc_purchases else 0,
-                'avg_ada_price': round(sum(ada_purchases) / len(ada_purchases), 4) if ada_purchases else 0
+                'total_buys': cost_basis['total_trades'],
+                'total_invested': cost_basis['net_invested'],  # Use net invested (buys - sells)
+                'btc_purchases': cost_basis['btc_trades'],
+                'ada_purchases': cost_basis['ada_trades'],
+                'avg_btc_price': round(sum(btc_buy_prices) / len(btc_buy_prices), 2) if btc_buy_prices else 0,
+                'avg_ada_price': round(sum(ada_buy_prices) / len(ada_buy_prices), 4) if ada_buy_prices else 0,
+                # Additional insights
+                'btc_invested': cost_basis['btc_invested'],
+                'ada_invested': cost_basis['ada_invested'],
+                'total_sold': cost_basis['total_sold']
             }
         })
     except Exception as e:
+        import traceback
+        print(f"ERROR in /api/stats: {str(e)}")
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
