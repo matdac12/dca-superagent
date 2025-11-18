@@ -121,8 +121,9 @@ def get_stats():
         cost_basis = binance.calculate_cost_basis()
         trades = cost_basis['trades']
 
-        # Calculate VWAP (Volume-Weighted Average Price) for BUY trades
-        # VWAP = sum(price * quantity) / sum(quantity)
+        # Calculate average cost per unit including fees (true cost basis)
+        # This matches how total_invested is calculated in calculate_cost_basis()
+        # Formula: sum(quote_quantity + fees) / sum(quantity)
         btc_total_cost = 0
         btc_total_quantity = 0
         ada_total_cost = 0
@@ -130,14 +131,20 @@ def get_stats():
 
         for trade in trades:
             if trade['side'] == 'BUY':
+                # Calculate EUR spent (including commission if in EUR)
+                # This matches the logic in calculate_cost_basis()
+                eur_spent = trade['quote_quantity']
+                if trade['commission_asset'] == 'EUR':
+                    eur_spent += trade['commission']
+
                 if 'BTC' in trade['symbol']:
-                    btc_total_cost += trade['price'] * trade['quantity']
+                    btc_total_cost += eur_spent
                     btc_total_quantity += trade['quantity']
                 elif 'ADA' in trade['symbol']:
-                    ada_total_cost += trade['price'] * trade['quantity']
+                    ada_total_cost += eur_spent
                     ada_total_quantity += trade['quantity']
 
-        # Calculate VWAP
+        # Calculate average cost per unit (VWAP including fees)
         vwap_btc = btc_total_cost / btc_total_quantity if btc_total_quantity > 0 else 0
         vwap_ada = ada_total_cost / ada_total_quantity if ada_total_quantity > 0 else 0
 
@@ -150,8 +157,8 @@ def get_stats():
                 'total_sold': cost_basis['total_sold'],          # Total EUR from sells
                 'btc_purchases': cost_basis['btc_trades'],
                 'ada_purchases': cost_basis['ada_trades'],
-                'avg_btc_price': round(vwap_btc, 2),  # VWAP instead of simple mean
-                'avg_ada_price': round(vwap_ada, 4),  # VWAP instead of simple mean
+                'avg_btc_price': round(vwap_btc, 2),  # Avg cost per unit (VWAP + fees)
+                'avg_ada_price': round(vwap_ada, 4),  # Avg cost per unit (VWAP + fees)
                 # Additional insights
                 'btc_invested': cost_basis['btc_invested'],
                 'ada_invested': cost_basis['ada_invested']
