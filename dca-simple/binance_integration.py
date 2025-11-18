@@ -419,9 +419,12 @@ class BinanceMarketData:
             logger.error(f"Failed to fetch trade history: {e}")
             raise
 
-    def calculate_cost_basis(self) -> Dict:
+    def calculate_cost_basis(self, trades: Optional[List[Dict]] = None) -> Dict:
         """
         Calculate accurate cost basis from actual Binance trade history
+
+        Args:
+            trades: Optional list of trades (if None, will fetch from Binance)
 
         Returns:
             {
@@ -430,13 +433,18 @@ class BinanceMarketData:
                 'net_invested': float,    # invested - sold
                 'btc_invested': float,    # EUR spent on BTC
                 'ada_invested': float,    # EUR spent on ADA
-                'btc_trades': int,
-                'ada_trades': int,
-                'total_trades': int
+                'btc_trades': int,        # Number of BTC buy trades
+                'ada_trades': int,        # Number of ADA buy trades
+                'total_buy_trades': int,  # Total number of buy trades
+                'total_sell_trades': int, # Total number of sell trades
+                'total_trades': int,      # All trades (buy + sell)
+                'trades': List[Dict]      # The trades list (for reuse)
             }
         """
         try:
-            trades = self.get_trade_history()
+            # Fetch trades if not provided (avoid duplicate API calls)
+            if trades is None:
+                trades = self.get_trade_history()
 
             total_invested = 0
             total_sold = 0
@@ -444,9 +452,13 @@ class BinanceMarketData:
             ada_invested = 0
             btc_trades = 0
             ada_trades = 0
+            total_buy_trades = 0
+            total_sell_trades = 0
 
             for trade in trades:
                 if trade['side'] == 'BUY':
+                    total_buy_trades += 1
+
                     # EUR spent (including commission if in EUR)
                     eur_spent = trade['quote_quantity']
                     if trade['commission_asset'] == 'EUR':
@@ -462,6 +474,8 @@ class BinanceMarketData:
                         ada_trades += 1
 
                 elif trade['side'] == 'SELL':
+                    total_sell_trades += 1
+
                     # EUR received (minus commission if in EUR)
                     eur_received = trade['quote_quantity']
                     if trade['commission_asset'] == 'EUR':
@@ -477,11 +491,14 @@ class BinanceMarketData:
                 'ada_invested': round(ada_invested, 2),
                 'btc_trades': btc_trades,
                 'ada_trades': ada_trades,
-                'total_trades': len(trades)
+                'total_buy_trades': total_buy_trades,
+                'total_sell_trades': total_sell_trades,
+                'total_trades': len(trades),
+                'trades': trades  # Return trades for reuse
             }
 
             logger.info(f"Cost basis calculated: €{result['total_invested']:,.2f} invested "
-                       f"({btc_trades} BTC + {ada_trades} ADA trades)")
+                       f"({btc_trades} BTC + {ada_trades} ADA buy trades)")
 
             return result
 

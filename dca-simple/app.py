@@ -117,35 +117,44 @@ def get_stats():
     try:
         binance = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
-        # Get actual cost basis from Binance
+        # Get cost basis (includes trades, avoiding duplicate API call)
         cost_basis = binance.calculate_cost_basis()
+        trades = cost_basis['trades']
 
-        # Get all trades to calculate average prices
-        trades = binance.get_trade_history()
-
-        btc_buy_prices = []
-        ada_buy_prices = []
+        # Calculate VWAP (Volume-Weighted Average Price) for BUY trades
+        # VWAP = sum(price * quantity) / sum(quantity)
+        btc_total_cost = 0
+        btc_total_quantity = 0
+        ada_total_cost = 0
+        ada_total_quantity = 0
 
         for trade in trades:
             if trade['side'] == 'BUY':
                 if 'BTC' in trade['symbol']:
-                    btc_buy_prices.append(trade['price'])
+                    btc_total_cost += trade['price'] * trade['quantity']
+                    btc_total_quantity += trade['quantity']
                 elif 'ADA' in trade['symbol']:
-                    ada_buy_prices.append(trade['price'])
+                    ada_total_cost += trade['price'] * trade['quantity']
+                    ada_total_quantity += trade['quantity']
+
+        # Calculate VWAP
+        vwap_btc = btc_total_cost / btc_total_quantity if btc_total_quantity > 0 else 0
+        vwap_ada = ada_total_cost / ada_total_quantity if ada_total_quantity > 0 else 0
 
         return jsonify({
             'success': True,
             'stats': {
-                'total_buys': cost_basis['total_trades'],
-                'total_invested': cost_basis['net_invested'],  # Use net invested (buys - sells)
+                'total_buys': cost_basis['total_buy_trades'],  # Count only BUY trades
+                'total_invested': cost_basis['total_invested'],  # Total EUR spent on buys
+                'net_invested': cost_basis['net_invested'],      # Invested - sold
+                'total_sold': cost_basis['total_sold'],          # Total EUR from sells
                 'btc_purchases': cost_basis['btc_trades'],
                 'ada_purchases': cost_basis['ada_trades'],
-                'avg_btc_price': round(sum(btc_buy_prices) / len(btc_buy_prices), 2) if btc_buy_prices else 0,
-                'avg_ada_price': round(sum(ada_buy_prices) / len(ada_buy_prices), 4) if ada_buy_prices else 0,
+                'avg_btc_price': round(vwap_btc, 2),  # VWAP instead of simple mean
+                'avg_ada_price': round(vwap_ada, 4),  # VWAP instead of simple mean
                 # Additional insights
                 'btc_invested': cost_basis['btc_invested'],
-                'ada_invested': cost_basis['ada_invested'],
-                'total_sold': cost_basis['total_sold']
+                'ada_invested': cost_basis['ada_invested']
             }
         })
     except Exception as e:
