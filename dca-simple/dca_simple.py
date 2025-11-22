@@ -28,6 +28,7 @@ sys.path.insert(1, str(openai_agents_dir))  # Insert at position 1, after curren
 # Import local binance_integration (EUR support), but other modules from parent
 from binance_integration import BinanceMarketData  # Local EUR version
 from telegram_notifier import TelegramNotifier  # From parent
+from twitter_poster import TwitterPoster  # Local
 from schemas import SimpleDCADecision, DCASession, SessionType, ExecutionResult
 from decision_agent import get_decision
 from market_orders import SimpleMarketExecutor
@@ -41,7 +42,9 @@ from utils import (
     log_error,
     validate_deployment_amounts,
     get_iso_timestamp,
-    format_market_snapshot
+    format_market_snapshot,
+    calculate_portfolio_pnl,
+    format_dca_tweet
 )
 
 
@@ -116,6 +119,7 @@ async def run_dca_session() -> DCASession:
             )
 
             send_notification(session)
+            post_to_twitter(session, binance_data)
             save_execution_log(session)
             return session
 
@@ -147,6 +151,7 @@ async def run_dca_session() -> DCASession:
             )
 
             send_notification(session)
+            post_to_twitter(session, binance_data)
             save_execution_log(session)
             return session
 
@@ -216,6 +221,7 @@ async def run_dca_session() -> DCASession:
             )
 
             send_notification(session)
+            post_to_twitter(session, binance_data)
             save_execution_log(session)
             return session
 
@@ -271,9 +277,10 @@ async def run_dca_session() -> DCASession:
         # ====================================================================
         # STEP 6: SEND NOTIFICATION AND SAVE LOG
         # ====================================================================
-        log_info("Step 6/6: Sending notification and saving log...")
+        log_info("Step 6/6: Sending notifications and saving log...")
 
         send_notification(session)
+        post_to_twitter(session, binance_data)
         save_execution_log(session)
 
         if session.was_successful:
@@ -392,6 +399,39 @@ Remaining: €{session.remaining_balance:.2f} EUR
     except Exception as e:
         print(f"   ⚠️  Failed to send Telegram notification: {e}\n")
         # Don't raise - notification failure shouldn't stop execution
+
+
+def post_to_twitter(session: DCASession, binance_data: BinanceMarketData):
+    """
+    Post DCA decision to X (Twitter).
+
+    Args:
+        session: DCASession to post about
+        binance_data: BinanceMarketData instance for P&L calculation
+    """
+    try:
+        poster = TwitterPoster()
+
+        # Calculate portfolio P&L
+        portfolio_pnl = calculate_portfolio_pnl(binance_data)
+
+        # Format tweet
+        tweet = format_dca_tweet(session, portfolio_pnl)
+
+        # Check length
+        if len(tweet) > 280:
+            log_warning(f"Tweet too long ({len(tweet)} chars), truncating...")
+            tweet = tweet[:277] + "..."
+
+        # Post tweet
+        if poster.post_tweet(tweet):
+            print("   ✅ Twitter post sent\n")
+        else:
+            print("   ⚠️  Failed to post to Twitter\n")
+
+    except Exception as e:
+        print(f"   ⚠️  Failed to post to Twitter: {e}\n")
+        # Don't raise - Twitter posting failure shouldn't stop execution
 
 
 # ============================================================================

@@ -286,6 +286,61 @@ def validate_deployment_amounts(
 
 
 # ============================================================================
+# PORTFOLIO P&L CALCULATION
+# ============================================================================
+
+def calculate_portfolio_pnl(binance_data) -> Dict[str, Any]:
+    """
+    Calculate portfolio P&L from Binance data.
+
+    Args:
+        binance_data: BinanceMarketData instance
+
+    Returns:
+        {
+            'total_value': float,       # Current portfolio value in EUR
+            'total_invested': float,    # Total EUR invested
+            'pnl': float,              # Unrealized P&L in EUR
+            'pnl_percent': float,      # P&L as percentage
+            'btc_balance': float,       # BTC holdings
+            'ada_balance': float,       # ADA holdings
+            'eur_balance': float        # EUR balance
+        }
+    """
+    # Get portfolio balances
+    portfolio = binance_data.get_portfolio_balances()
+
+    # Get current prices
+    intelligence = binance_data.get_complete_market_intelligence()
+    btc_price = intelligence['btc']['price']
+    ada_price = intelligence['ada']['price']
+
+    # Calculate current values
+    btc_value = portfolio['BTC']['total'] * btc_price
+    ada_value = portfolio['ADA']['total'] * ada_price
+    eur_value = portfolio['EUR']['total']
+    total_value = btc_value + ada_value + eur_value
+
+    # Get cost basis
+    cost_basis = binance_data.calculate_cost_basis()
+    total_invested = cost_basis['net_invested']  # invested - sold
+
+    # Calculate P&L
+    pnl = total_value - total_invested
+    pnl_percent = (pnl / total_invested * 100) if total_invested > 0 else 0
+
+    return {
+        'total_value': round(total_value, 2),
+        'total_invested': round(total_invested, 2),
+        'pnl': round(pnl, 2),
+        'pnl_percent': round(pnl_percent, 2),
+        'btc_balance': portfolio['BTC']['total'],
+        'ada_balance': portfolio['ADA']['total'],
+        'eur_balance': portfolio['EUR']['total']
+    }
+
+
+# ============================================================================
 # TIMESTAMP HELPERS
 # ============================================================================
 
@@ -298,6 +353,72 @@ def format_timestamp(iso_timestamp: str) -> str:
     """Format ISO timestamp for display"""
     dt = datetime.fromisoformat(iso_timestamp)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ============================================================================
+# TWEET FORMATTING
+# ============================================================================
+
+def format_dca_tweet(session: DCASession, portfolio_pnl: Dict[str, Any]) -> str:
+    """
+    Format a DCA session into a minimal tweet.
+
+    Args:
+        session: DCASession with decision and execution details
+        portfolio_pnl: Portfolio P&L data from calculate_portfolio_pnl()
+
+    Returns:
+        Formatted tweet text (under 280 characters)
+    """
+    decision_type = session.session_type.value.upper()
+
+    # Format P&L with + or - sign
+    pnl_sign = "+" if portfolio_pnl['pnl_percent'] >= 0 else ""
+    pnl_str = f"{pnl_sign}{portfolio_pnl['pnl_percent']:.1f}%"
+
+    if session.session_type == SessionType.BUY:
+        # BUY tweet: Show what was bought
+        btc_amt = session.decision.btc_amount
+        ada_amt = session.decision.ada_amount
+
+        # Build purchase line
+        purchases = []
+        if btc_amt >= config.MIN_ORDER_SIZE:
+            purchases.append(f"€{btc_amt:.0f} BTC")
+        if ada_amt >= config.MIN_ORDER_SIZE:
+            purchases.append(f"€{ada_amt:.0f} ADA")
+
+        purchase_line = ", ".join(purchases)
+
+        tweet = f"""🤖 DCA: {decision_type}
+
+Bought {purchase_line}
+
+Positions: {portfolio_pnl['btc_balance']:.8f} BTC, {portfolio_pnl['ada_balance']:.2f} ADA
+Portfolio: €{portfolio_pnl['total_value']:.0f}
+P&L: {pnl_str}"""
+
+    elif session.session_type == SessionType.HOLD:
+        # HOLD tweet
+        tweet = f"""🤖 DCA: {decision_type}
+
+No purchases today.
+
+Positions: {portfolio_pnl['btc_balance']:.8f} BTC, {portfolio_pnl['ada_balance']:.2f} ADA
+Portfolio: €{portfolio_pnl['total_value']:.0f}
+P&L: {pnl_str}"""
+
+    else:  # SKIP
+        # SKIP tweet
+        tweet = f"""🤖 DCA: {decision_type}
+
+Insufficient balance.
+
+Positions: {portfolio_pnl['btc_balance']:.8f} BTC, {portfolio_pnl['ada_balance']:.2f} ADA
+Portfolio: €{portfolio_pnl['total_value']:.0f}
+P&L: {pnl_str}"""
+
+    return tweet
 
 
 # ============================================================================
