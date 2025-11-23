@@ -524,17 +524,17 @@ class BinanceMarketData:
             # BTC data
             logger.info("Fetching BTC market data...")
             btc_ticker = self.get_ticker_24h('BTCEUR')
-            # Use 1h interval to get more historical data (testnet has limited 4h data)
-            # On testnet: 1h gives ~74 candles, 4h only gives ~19
-            # On production: both will have full history
-            btc_klines = self.get_klines('BTCEUR', interval='1h', limit=500)
+            # Use daily candles for RSI calculation to match standard trading analysis
+            # RSI(14) on daily candles = 14-day RSI (what TradingView/CoinGecko show)
+            # Previously used 1h which gave 14-hour RSI (too volatile, not useful)
+            btc_klines = self.get_klines('BTCEUR', interval='1d', limit=100)
             btc_indicators = self.calculate_technical_indicators(btc_klines)
             btc_order_book = self.get_order_book('BTCEUR', limit=20)
 
             # ADA data
             logger.info("Fetching ADA market data...")
             ada_ticker = self.get_ticker_24h('ADAEUR')
-            ada_klines = self.get_klines('ADAEUR', interval='1h', limit=500)
+            ada_klines = self.get_klines('ADAEUR', interval='1d', limit=100)
             ada_indicators = self.calculate_technical_indicators(ada_klines)
             ada_order_book = self.get_order_book('ADAEUR', limit=20)
 
