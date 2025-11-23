@@ -87,8 +87,10 @@ Sentiment Analysis:
 Allocation Strategy:
 - You can deploy LESS than €{max_deploy:.2f} if conditions aren't ideal
 - You can HOLD entirely (btc_amount=0, ada_amount=0) if both assets are overbought
-- Prefer BTC for large allocations (more established)
-- Consider ADA when it shows relative strength or better value
+- BTC and ADA have EQUAL priority - no inherent preference for either
+- Allocate based purely on technical signals (RSI, price action, value)
+- The asset with better buying conditions (lower RSI, more oversold) should get more allocation
+- If both have similar conditions, split evenly or based on which is more oversold
 - Don't feel obligated to deploy all available capital
 
 YOUR TASK:
