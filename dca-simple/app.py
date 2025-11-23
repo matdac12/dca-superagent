@@ -14,6 +14,7 @@ load_dotenv()
 
 # Import DCA modules
 from binance_integration import BinanceMarketData
+from utils import get_fear_greed_index
 import config
 
 app = Flask(__name__)
@@ -55,7 +56,7 @@ def get_portfolio():
             'market': {
                 'btc_rsi': btc['indicators']['rsi'],
                 'ada_rsi': ada['indicators']['rsi'],
-                'fear_greed': intelligence.get('fear_greed', 50)
+                'fear_greed': get_fear_greed_index()  # Fetch real value from API
             }
         })
     except Exception as e:
