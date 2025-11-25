@@ -71,36 +71,36 @@ def get_portfolio():
 
 @app.route('/api/history')
 def get_history():
-    """Get recent purchase history from actual Binance trades"""
+    """Get recent trade history from actual Binance trades (buys and sells)"""
     try:
         binance = BinanceMarketData(testnet=config.BINANCE_TESTNET)
 
         # Get actual trades from Binance
         trades = binance.get_trade_history()
 
-        # Convert to purchases format (filter only BUYs, newest first)
-        purchases = []
+        # Convert to history format (both BUYs and SELLs, newest first)
+        history = []
         for trade in trades:
-            if trade['side'] == 'BUY':
-                # Extract asset from symbol (e.g., BTCEUR -> BTC)
-                asset = trade['symbol'].replace('EUR', '').replace('USDT', '')
+            # Extract asset from symbol (e.g., BTCEUR -> BTC)
+            asset = trade['symbol'].replace('EUR', '').replace('USDT', '')
 
-                purchases.append({
-                    'timestamp': trade['timestamp'],
-                    'asset': asset,
-                    'amount_eur': trade['quote_quantity'],  # Actual EUR spent
-                    'price': trade['price'],
-                    'quantity': trade['quantity'],  # Amount of crypto purchased
-                    'source': 'binance',  # Mark as real trade
-                    'order_id': trade['order_id']
-                })
+            history.append({
+                'timestamp': trade['timestamp'],
+                'asset': asset,
+                'side': trade['side'],  # BUY or SELL
+                'amount_eur': trade['quote_quantity'],  # EUR spent/received
+                'price': trade['price'],
+                'quantity': trade['quantity'],  # Amount of crypto bought/sold
+                'source': 'binance',  # Mark as real trade
+                'order_id': trade['order_id']
+            })
 
         # Sort by timestamp (newest first)
-        purchases.sort(key=lambda x: x['timestamp'], reverse=True)
+        history.sort(key=lambda x: x['timestamp'], reverse=True)
 
         return jsonify({
             'success': True,
-            'purchases': purchases[:20]  # Return last 20 purchases
+            'purchases': history[:20]  # Return last 20 trades (kept 'purchases' for backwards compat)
         })
     except Exception as e:
         import traceback
