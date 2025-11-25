@@ -77,10 +77,10 @@ async function loadPortfolio() {
         // Update portfolio summary
         document.getElementById('total-value').textContent = formatCurrency(portfolio.total_value);
 
-        // Calculate P&L and ROI (will be enhanced when we track cost basis)
-        const totalInvested = await getTotalInvested();
-        const pnl = portfolio.total_value - totalInvested;
-        const roi = totalInvested > 0 ? (pnl / totalInvested) * 100 : 0;
+        // Calculate P&L and ROI using net invested (accounts for sells)
+        const netInvested = await getTotalInvested();  // Returns net_invested from API
+        const pnl = portfolio.total_value - netInvested;
+        const roi = netInvested > 0 ? (pnl / netInvested) * 100 : 0;
 
         const pnlElement = document.getElementById('total-pnl');
         pnlElement.textContent = formatCurrency(pnl);
@@ -153,7 +153,7 @@ async function loadStats() {
         document.getElementById('avg-ada-price').textContent =
             stats.avg_ada_price > 0 ? formatCurrency(stats.avg_ada_price) : '—';
 
-        return stats.total_invested;
+        return stats.net_invested;  // Use net_invested for accurate PnL (accounts for sells)
     } catch (error) {
         console.error('Error loading stats:', error);
         throw error;
@@ -204,10 +204,11 @@ async function loadHistory() {
     }
 }
 
-// Helper: Get total invested (cached from stats)
+// Helper: Get net invested amount (total invested - total sold)
+// Cached from stats API for PnL calculation
 let cachedTotalInvested = 0;
 async function getTotalInvested() {
-    return cachedTotalInvested;
+    return cachedTotalInvested;  // Returns net_invested (accounts for sells)
 }
 
 // Helper: Get Fear & Greed label
