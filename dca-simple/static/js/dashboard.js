@@ -142,6 +142,8 @@ async function loadStats() {
 
         document.getElementById('total-buys').textContent = stats.total_buys;
         document.getElementById('total-invested').textContent = formatCurrency(stats.total_invested);
+        document.getElementById('total-sold').textContent = formatCurrency(stats.total_sold || 0);
+        document.getElementById('net-invested').textContent = formatCurrency(stats.net_invested);
         document.getElementById('avg-btc-price').textContent =
             stats.avg_btc_price > 0 ? formatCurrency(stats.avg_btc_price) : '—';
         document.getElementById('avg-ada-price').textContent =
@@ -175,18 +177,26 @@ async function loadHistory() {
 
         noData.classList.add('hidden');
         container.innerHTML = purchases.map(purchase => {
+            const isBuy = purchase.side === 'BUY' || !purchase.side; // Default to BUY for backwards compat
             const assetColor = purchase.asset === 'BTC' ? 'orange' : 'blue';
+            const sideLabel = isBuy ? 'BUY' : 'SELL';
+            const sideColor = isBuy ? 'text-green-600' : 'text-red-600';
+            const sideBg = isBuy ? 'bg-green-50' : 'bg-red-50';
+
             return `
-                <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+                <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0 ${sideBg} px-2 rounded">
                     <div class="flex items-center space-x-3">
                         <div class="w-2 h-2 bg-${assetColor}-500 rounded-full"></div>
                         <div>
-                            <div class="font-semibold text-gray-900">${purchase.asset}</div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">${purchase.asset}</span>
+                                <span class="text-xs font-bold ${sideColor}">${sideLabel}</span>
+                            </div>
                             <div class="text-sm text-gray-500">${formatTimestamp(purchase.timestamp)}</div>
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="font-bold mono text-gray-900">${formatCurrency(purchase.amount_eur)}</div>
+                        <div class="font-bold mono ${sideColor}">${formatCurrency(purchase.amount_eur)}</div>
                         <div class="text-sm text-gray-500">@ ${formatCurrency(purchase.price)}</div>
                     </div>
                 </div>
@@ -228,13 +238,12 @@ async function loadDashboard() {
     try {
         showLoading();
 
-        // Load all data in parallel
-        const statsPromise = loadStats();
-        const portfolioPromise = loadPortfolio();
-        const historyPromise = loadHistory();
+        // CRITICAL: Load stats FIRST to cache net_invested before calculating PnL
+        // Otherwise portfolio load uses cachedTotalInvested=0 causing wrong PnL on first load
+        cachedTotalInvested = await loadStats();
 
-        cachedTotalInvested = await statsPromise;
-        await Promise.all([portfolioPromise, historyPromise]);
+        // Now load portfolio (uses cached net_invested) and history in parallel
+        await Promise.all([loadPortfolio(), loadHistory()]);
 
         showContent();
         updateLastUpdated();
