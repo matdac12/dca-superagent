@@ -48,8 +48,9 @@ def calculate_deployment_amount(eur_balance: float) -> float:
     Calculate deployment amount based on balance.
 
     Strategy (conservative - deploy LESS as balance grows):
-    - €10-20: Deploy 95% (5% reserved for fees and rounding)
-    - €20-50: Deploy 50% (medium amount, deploy half)
+    - €10-15: Deploy 95% (must meet €10 minimum order size)
+    - €15-25: Deploy 70% (transition zone, smooths the curve)
+    - €25-50: Deploy 50% (medium amount, deploy half)
     - €50-100: Deploy 35% (larger amount, more conservative)
     - €100-500: Deploy 25% (even more conservative)
     - €500+: Deploy 20% (very conservative)
@@ -64,8 +65,11 @@ def calculate_deployment_amount(eur_balance: float) -> float:
         Maximum EUR amount to deploy this session
 
     Examples:
-        >>> calculate_deployment_amount(10.43)
-        9.91  # 95% of €10.43
+        >>> calculate_deployment_amount(12)
+        11.4  # 95% of €12
+
+        >>> calculate_deployment_amount(20)
+        14.0  # 70% of €20
 
         >>> calculate_deployment_amount(30)
         15.0  # 50% of €30
@@ -77,8 +81,10 @@ def calculate_deployment_amount(eur_balance: float) -> float:
         return 0.0
 
     # Determine percentage based on balance tier (decreases as balance grows)
-    if eur_balance < 20:
-        percentage = 0.95  # 95% (small fee cushion)
+    if eur_balance < 15:
+        percentage = 0.95  # 95% (must meet €10 minimum)
+    elif eur_balance < 25:
+        percentage = 0.70  # 70% (transition zone)
     elif eur_balance < 50:
         percentage = 0.50  # 50%
     elif eur_balance < 100:
@@ -104,8 +110,10 @@ def get_deployment_percentage(eur_balance: float) -> float:
     """
     if eur_balance < MIN_EUR_THRESHOLD:
         return 0.0
-    elif eur_balance < 20:
+    elif eur_balance < 15:
         return 0.95  # 95%
+    elif eur_balance < 25:
+        return 0.70  # 70%
     elif eur_balance < 50:
         return 0.50  # 50%
     elif eur_balance < 100:
@@ -205,8 +213,9 @@ def print_config():
     print(f"  Min EUR Balance: €{MIN_EUR_THRESHOLD}")
     print(f"  Min Order Size: €{MIN_ORDER_SIZE} per asset")
     print(f"\nDeployment Strategy (% decreases as balance grows):")
-    print(f"  €10-20:     95% deployment (5% reserved for fees/rounding)")
-    print(f"  €20-50:     50% deployment")
+    print(f"  €10-15:     95% deployment (must meet €10 minimum)")
+    print(f"  €15-25:     70% deployment (transition zone)")
+    print(f"  €25-50:     50% deployment")
     print(f"  €50-100:    35% deployment")
     print(f"  €100-500:   25% deployment")
     print(f"  €500+:      20% deployment")

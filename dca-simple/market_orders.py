@@ -90,11 +90,15 @@ class SimpleMarketExecutor:
 
             print(f"   Price: €{current_price:.2f}, Spending exactly: €{usd_amount:.2f}")
 
+            # Round quoteOrderQty to 2 decimal places (EUR precision requirement)
+            # Binance API error -1111 occurs if precision exceeds allowed decimals
+            rounded_amount = round(usd_amount, 2)
+
             # Place market order using quoteOrderQty for exact EUR spending
             # Binance will automatically calculate the correct quantity
             order_response = client.order_market_buy(
                 symbol=asset,
-                quoteOrderQty=usd_amount
+                quoteOrderQty=rounded_amount
             )
 
             # Parse response
